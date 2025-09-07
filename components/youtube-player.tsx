@@ -82,7 +82,6 @@ export function YouTubePlayer({
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
 
       window.onYouTubeIframeAPIReady = () => {
-        console.log("[YouTube] API ready");
         setApiReady(true);
         apiLoadedRef.current = true;
       };
@@ -100,7 +99,6 @@ export function YouTubePlayer({
 
     // Only create new player if video ID changed
     if (newVideoId !== currentVideoId) {
-      console.log("[YouTube] Creating player for:", newVideoId);
 
       // Clean up existing player
       if (
@@ -134,7 +132,6 @@ export function YouTubePlayer({
           },
           events: {
             onReady: (event: any) => {
-              console.log("[YouTube] Player ready");
               setPlayerReady(true);
 
               try {
@@ -166,7 +163,6 @@ export function YouTubePlayer({
             },
             onStateChange: (event: any) => {
               const newState = event.data;
-              console.log("[YouTube] State changed:", newState);
               setPlayerState(newState);
 
               // Handle video end (only leader or creator triggers next)
@@ -200,13 +196,11 @@ export function YouTubePlayer({
         const currentState = playerRef.current.getPlayerState();
 
         if (isPlaying && currentState !== window.YT.PlayerState.PLAYING) {
-          console.log("[YouTube] Playing video");
           playerRef.current.playVideo();
         } else if (
           !isPlaying &&
           currentState === window.YT.PlayerState.PLAYING
         ) {
-          console.log("[YouTube] Pausing video");
           playerRef.current.pauseVideo();
         }
       } catch (error) {
@@ -289,7 +283,6 @@ export function YouTubePlayer({
       !isUserSeeking;
 
     if (shouldSync) {
-      console.log("[YouTube] Syncing to:", syncedTime, "Leader:", syncLeader, "Current:", playerTime);
       try {
         playerRef.current.seekTo(syncedTime, true);
         // Ensure we don't auto-resume if room says paused
@@ -325,10 +318,8 @@ export function YouTubePlayer({
         const currentState = playerRef.current.getPlayerState();
         
         if (isPlaying && currentState !== window.YT.PlayerState.PLAYING) {
-          console.log("[YouTube] Syncing play state - playing");
           playerRef.current.playVideo();
         } else if (!isPlaying && currentState === window.YT.PlayerState.PLAYING) {
-          console.log("[YouTube] Syncing play state - pausing");
           playerRef.current.pauseVideo();
         }
       } catch (error) {
@@ -368,30 +359,24 @@ export function YouTubePlayer({
     }
 
     if (canControl) {
-      console.log("[YouTube] Seek to:", newTime, "- isCreator:", isCreator, "isUserSyncing:", isUserSyncing);
       onSeek(newTime);
     } else {
-      console.log("[YouTube] Seek denied - insufficient permissions");
     }
 
     setTimeout(() => setIsUserSeeking(false), 1000);
   };
 
   const handlePlayPause = () => {
-    console.log("[YouTube] Play/Pause clicked - isCreator:", isCreator, "isUserSyncing:", isUserSyncing);
     if (canControl) {
       onPlayPause();
     } else {
-      console.log("[YouTube] Control denied - insufficient permissions");
     }
   };
 
   const handleNext = () => {
-    console.log("[YouTube] Next clicked - isCreator:", isCreator, "isUserSyncing:", isUserSyncing);
     if (canControl) {
       onNext();
     } else {
-      console.log("[YouTube] Control denied - insufficient permissions");
     }
   };
 

@@ -174,7 +174,6 @@ function CreateRoomCard() {
 
       if (navigator.clipboard) {
         navigator.clipboard.writeText(shareUrl).catch(() => {
-          console.log("Could not copy to clipboard");
         });
       }
 

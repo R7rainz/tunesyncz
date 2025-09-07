@@ -130,7 +130,6 @@ class SupabaseRealTimeManager {
           filter: `id=eq.${normalizedRoomId}`,
         },
         (payload) => {
-          console.log('[Supabase] Real-time update:', payload);
           if (payload.new) {
             const roomData = dbRowToRoomData(payload.new as RoomRow);
             callback(roomData);
@@ -138,7 +137,6 @@ class SupabaseRealTimeManager {
         }
       )
       .subscribe((status) => {
-        console.log('[Supabase] Subscription status:', status);
       });
 
     this.channels.set(normalizedRoomId, channel);
@@ -206,7 +204,6 @@ export class RoomStorage {
     const encodedData = btoa(JSON.stringify(roomInfo));
     const shareUrl = `${window.location.origin}/room/${roomId}?data=${encodedData}`;
 
-    console.log('[RoomStorage] Created room:', roomId);
     return { roomData, shareUrl };
   }
 
@@ -215,7 +212,6 @@ export class RoomStorage {
     const upperRoomId = roomId.toUpperCase();
     const userId = LocalRoomStorage.getUserId();
     
-    console.log('[RoomStorage] Joining room:', upperRoomId);
 
     // Try to get existing room from Supabase
     const { data: existingRoom, error: fetchError } = await supabase
@@ -234,7 +230,6 @@ export class RoomStorage {
       
       // Store locally as cache
       localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(roomData));
-      console.log('[RoomStorage] Joined existing room from Supabase');
       return roomData;
     }
 
@@ -281,7 +276,6 @@ export class RoomStorage {
       throw new Error('Failed to create room on server');
     }
     
-    console.log('[RoomStorage] Created new room:', roomData.id);
     return roomData;
   }
 
@@ -358,7 +352,6 @@ export class RoomStorage {
       if (error) {
         console.error('[Supabase] Failed to update room:', error);
       } else {
-        console.log('[RoomStorage] Updated room in Supabase:', upperRoomId);
       }
     } catch (error) {
       console.error('[Supabase] Update room error:', error);
@@ -501,7 +494,6 @@ export class RoomStorage {
       if (error) {
         console.error('[Supabase] Failed to cleanup old rooms:', error);
       } else {
-        console.log('[RoomStorage] Cleaned up old rooms');
       }
     } catch (error) {
       console.error('[Supabase] Cleanup error:', error);

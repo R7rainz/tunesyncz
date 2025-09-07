@@ -13,7 +13,6 @@ export class WebSocketClient {
   }
 
   async connect(): Promise<void> {
-    console.log("[WebSocketClient] Attempting connection to room:", this.roomId)
 
     // Try to join room via HTTP API
     try {
@@ -31,12 +30,10 @@ export class WebSocketClient {
       })
 
       if (response.ok) {
-        console.log("[WebSocketClient] Connected via HTTP fallback")
         this.startPolling()
         return
       }
     } catch (error) {
-      console.log("[WebSocketClient] HTTP fallback failed, using localStorage only")
     }
 
     // If HTTP fails, we'll rely on localStorage sync from room-storage.ts

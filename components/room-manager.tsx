@@ -128,7 +128,6 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
   const loadRoomData = useCallback(async () => {
     try {
-      console.log("loading room:", roomId);
 
       // Use the enhanced getRoomData that checks server first
       const data = await RoomStorage.getRoomData(roomId);
@@ -142,7 +141,6 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
           (data.lastSyncUpdate || 0) >= (current.lastSyncUpdate || 0);
 
         if (!isNewer) {
-          console.log("[RoomManager] Ignored stale fetch payload");
           return;
         }
 
@@ -184,19 +182,8 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
     const setupRealTimeSync = async () => {
       try {
-        console.log(
-          "[RoomManager] Setting up real-time sync for room:",
-          roomId,
-        );
         // Use real-time subscription instead of polling
         unsubscribe = await RoomStorage.joinRoomRealTime(roomId, (data) => {
-          console.log("[RoomManager] Real-time update received:", {
-            roomId: data.id,
-            members: data.members,
-            queueLength: data.queue.length,
-            isPlaying: data.isPlaying,
-            currentSong: data.currentSong?.snippet?.title,
-          });
           lastRealtimeRef.current = Date.now();
           // Guard against stale updates overriding local optimistic state
           const current = currentRoomRef.current;
@@ -205,17 +192,14 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
               (data.lastActivity || 0) >= (current.lastActivity || 0) ||
               (data.lastSyncUpdate || 0) >= (current.lastSyncUpdate || 0);
             if (!incomingIsNewer) {
-              console.log("[RoomManager] Ignored stale realtime payload");
               return;
             }
           }
           setRoomData(data);
         });
-        console.log("[RoomManager] Real-time sync setup successful");
       } catch (error) {
         console.error("[RoomManager] Failed to setup real-time sync:", error);
         // Fallback to polling if real-time fails
-        console.log("[RoomManager] Falling back to polling");
         loadRoomData();
         const interval = setInterval(loadRoomData, 2000);
         return () => clearInterval(interval);
@@ -245,7 +229,6 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     return () => clearInterval(interval);
   }, [loadRoomData]);
 
-  // Note: We rely on realtime subscription; polling is used only as fallback in setupRealTimeSync
 
   const updateRoomData = useCallback(
     async (updates: Partial<RoomData>) => {
@@ -253,12 +236,6 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
       const updatedRoom = { ...roomData, ...updates, lastActivity: Date.now() };
 
-      console.log("[RoomManager] Updating room data:", {
-        roomId,
-        updates,
-        newMemberCount: updatedRoom.members?.length,
-        newQueueLength: updatedRoom.queue?.length,
-      });
 
       // Optimistically update local state for immediate UX response
       setRoomData(updatedRoom);
@@ -535,14 +512,9 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
         // If there's no current leader, they become the leader
         if (!currentLeader) {
           updates.syncLeader = targetUserId;
-          console.log("[RoomManager] User became sync leader:", targetUserId);
         }
         // If there's already a leader, they join the sync group
         else {
-          console.log(
-            "[RoomManager] User joined sync group, leader:",
-            currentLeader,
-          );
         }
 
         // Nudge timeline so players seek to current effective time
@@ -562,13 +534,8 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
           );
           if (syncingUsers.length > 0) {
             updates.syncLeader = syncingUsers[0];
-            console.log(
-              "[RoomManager] Leadership transferred to:",
-              syncingUsers[0],
-            );
           } else {
             updates.syncLeader = undefined;
-            console.log("[RoomManager] No more syncing users, cleared leader");
           }
         }
       }
