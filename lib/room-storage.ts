@@ -387,16 +387,29 @@ export class RoomStorage {
     // Get initial room data
     const roomData = await this.getRoomData(upperRoomId);
     if (roomData) {
-      // Ensure current user is part of members when joining in real-time
+      // Ensure current user is part of members and has a sync state entry
       const currentUserId = this.getCurrentUserId();
-      if (!roomData.members.includes(currentUserId)) {
+      const needsMemberAdd = !roomData.members.includes(currentUserId);
+      const needsSyncStateAdd = !roomData.memberSyncStates || roomData.memberSyncStates[currentUserId] === undefined;
+
+      if (needsMemberAdd || needsSyncStateAdd) {
         try {
-          const updatedMembers = [...roomData.members, currentUserId];
-          await this.updateRoom(upperRoomId, { members: updatedMembers });
+          const updatedMembers = needsMemberAdd ? [...roomData.members, currentUserId] : roomData.members;
+          const updatedSyncStates = {
+            ...(roomData.memberSyncStates || {}),
+            // default to not syncing on join
+            [currentUserId]: roomData.memberSyncStates?.[currentUserId] ?? false,
+          };
+
+          await this.updateRoom(upperRoomId, {
+            members: updatedMembers,
+            memberSyncStates: updatedSyncStates,
+          });
+
           // Optimistically update local cache/state before realtime event arrives
-          onUpdate({ ...roomData, members: updatedMembers });
+          onUpdate({ ...roomData, members: updatedMembers, memberSyncStates: updatedSyncStates });
         } catch (e) {
-          console.error('[RoomStorage] Failed to add current user to members:', e);
+          console.error('[RoomStorage] Failed to ensure membership/sync state:', e);
           onUpdate(roomData);
         }
       } else {

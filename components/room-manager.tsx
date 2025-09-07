@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +91,9 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { toast } = useToast();
   const [userId, setUserId] = useState<string>("");
+  const lastRealtimeRef = useRef<number>(Date.now());
+  const currentRoomRef = useRef<RoomData | null>(null);
+  const lastLocalUpdateRef = useRef<number>(0);
 
   useEffect(() => {
     const user = RoomStorage.getCurrentUserId();
@@ -168,6 +171,18 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
             isPlaying: data.isPlaying,
             currentSong: data.currentSong?.snippet?.title,
           });
+          lastRealtimeRef.current = Date.now();
+          // Guard against stale updates overriding local optimistic state
+          const current = currentRoomRef.current;
+          if (current) {
+            const incomingIsNewer =
+              (data.lastActivity || 0) >= (current.lastActivity || 0) ||
+              (data.lastSyncUpdate || 0) >= (current.lastSyncUpdate || 0);
+            if (!incomingIsNewer) {
+              console.log("[RoomManager] Ignored stale realtime payload");
+              return;
+            }
+          }
           setRoomData(data);
         });
         console.log("[RoomManager] Real-time sync setup successful");
@@ -190,6 +205,22 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     };
   }, [roomId, loadRoomData]);
 
+  // Realtime watchdog: if no realtime updates arrive for >5s, refresh once
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (
+        Date.now() - lastRealtimeRef.current > 5000 &&
+        Date.now() - lastLocalUpdateRef.current > 3000
+      ) {
+        loadRoomData();
+        lastRealtimeRef.current = Date.now();
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [loadRoomData]);
+
+  // Note: We rely on realtime subscription; polling is used only as fallback in setupRealTimeSync
+
   const updateRoomData = useCallback(
     async (updates: Partial<RoomData>) => {
       if (!roomData) return;
@@ -205,10 +236,12 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
       // Optimistically update local state for immediate UX response
       setRoomData(updatedRoom);
+      currentRoomRef.current = updatedRoom;
+      lastLocalUpdateRef.current = Date.now();
 
-      // Persist to Supabase; realtime will reconcile if needed
+      // Persist only the delta to Supabase to avoid overwriting concurrent changes
       try {
-        await RoomStorage.updateRoomRealTime(roomId, updatedRoom);
+        await RoomStorage.updateRoomRealTime(roomId, updates);
       } catch (err) {
         console.error("[RoomManager] Failed to persist room update:", err);
       }
@@ -315,9 +348,16 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
     const newPlayingState = !roomData.isPlaying;
 
-    // If this user is enabling sync play, they become the sync leader
+    // Compute effective timeline at the moment of toggle to preserve position
+    const base = roomData.syncedTime || 0;
+    const last = roomData.lastSyncUpdate || 0;
+    const deltaSec = roomData.isPlaying && last > 0 ? Math.max(0, (Date.now() - last) / 1000) : 0;
+    const effectiveTime = base + deltaSec;
+
     const updates: Partial<RoomData> = {
       isPlaying: newPlayingState,
+      // On pause: lock in the current effective position; On play: keep current position and reset clock
+      syncedTime: effectiveTime,
       lastSyncUpdate: Date.now(),
     };
 
@@ -475,6 +515,14 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
             currentLeader,
           );
         }
+
+        // Nudge timeline so players seek to current effective time
+        const base = roomData.syncedTime || 0;
+        const last = roomData.lastSyncUpdate || 0;
+        const deltaSec = roomData.isPlaying && last > 0 ? Math.max(0, (Date.now() - last) / 1000) : 0;
+        const leaderEffectiveTime = base + deltaSec;
+        updates.syncedTime = leaderEffectiveTime;
+        updates.lastSyncUpdate = Date.now();
       }
       // If user is disabling sync
       else {
@@ -496,6 +544,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
         }
       }
 
+      // Optimistically update and persist only the delta
       updateRoomData(updates);
 
       const action = newSyncState ? "enabled" : "disabled";
@@ -537,6 +586,18 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
   }
 
   const isCreator = roomData.creator === userId;
+  
+  // Compute playback state per user and effective synced time
+  const shouldPlayForUser = (roomData.isPlaying || false) && (isCreator || isUserSyncing(userId));
+  const effectiveSyncedTime = (() => {
+    const base = roomData.syncedTime || 0;
+    const last = roomData.lastSyncUpdate || 0;
+    if (roomData.isPlaying && last > 0) {
+      const deltaSec = Math.max(0, (Date.now() - last) / 1000);
+      return base + deltaSec;
+    }
+    return base;
+  })();
 
   return (
     <div className="min-h-screen p-4 bg-gray-950">
@@ -723,14 +784,14 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
           <div className="lg:col-span-2 space-y-4">
             <YouTubePlayer
               currentSong={roomData.currentSong}
-              isPlaying={roomData.isPlaying || false}
+              isPlaying={shouldPlayForUser}
               onPlayPause={handlePlayPause}
               onNext={handleNext}
               onSeek={handleSeek}
               syncPlay={roomData.syncPlay}
               isCreator={isCreator}
               roomId={roomId}
-              syncedTime={roomData.syncedTime || 0}
+              syncedTime={effectiveSyncedTime}
               lastSyncUpdate={roomData.lastSyncUpdate || 0}
               memberSyncStates={getMemberSyncStates()}
               syncLeader={getSyncLeader()}

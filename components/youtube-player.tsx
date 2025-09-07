@@ -144,6 +144,16 @@ export function YouTubePlayer({
                 }
                 event.target.setVolume(volume);
 
+                // Seek to synced position immediately on ready
+                if (typeof syncedTime === "number" && syncedTime > 0) {
+                  try {
+                    event.target.seekTo(syncedTime, true);
+                    setCurrentTime(syncedTime);
+                  } catch (err) {
+                    console.error("[YouTube] Error seeking onReady:", err);
+                  }
+                }
+
                 // Set initial playback state
                 if (isPlaying) {
                   event.target.playVideo();
@@ -164,20 +174,6 @@ export function YouTubePlayer({
                 setTimeout(() => {
                   onNext();
                 }, 500);
-              }
-
-              // Sync playback state with room
-              if (newState === window.YT.PlayerState.PLAYING && !isPlaying) {
-                if (syncPlay || isCreator) {
-                  onPlayPause();
-                }
-              } else if (
-                newState === window.YT.PlayerState.PAUSED &&
-                isPlaying
-              ) {
-                if (syncPlay || isCreator) {
-                  onPlayPause();
-                }
               }
             },
             onError: (event: any) => {
@@ -214,9 +210,17 @@ export function YouTubePlayer({
       }
     };
 
-    // Small delay to prevent rapid state changes
-    const timeout = setTimeout(controlPlayback, 100);
-    return () => clearTimeout(timeout);
+    // Small delay to prevent rapid state changes; also re-apply on window focus
+    const timeout = setTimeout(controlPlayback, 120);
+    const onFocus = () => controlPlayback();
+    const onVisibility = () => controlPlayback();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [isPlaying, playerReady]);
 
   // Update current time when playing
@@ -260,23 +264,34 @@ export function YouTubePlayer({
 
   // Handle sync time updates - sync if user is syncing and not the leader
   useEffect(() => {
-    if (!playerReady || !playerRef.current || isUserSeeking || !userId) return;
+    if (!playerReady || !playerRef.current || !userId) return;
 
     const isUserSyncing = memberSyncStates[userId] || false;
     const isUserLeader = syncLeader === userId;
     
+    // Always compute fresh current time to avoid stale state when paused
+    let playerTime = currentTime;
+    try {
+      const t = playerRef.current.getCurrentTime();
+      if (typeof t === "number" && !isNaN(t)) playerTime = t;
+    } catch {}
+
     const shouldSync =
       isUserSyncing &&
       !isUserLeader &&
-      syncedTime > 0 &&
+      syncedTime >= 0 &&
       lastSyncUpdate > 0 &&
-      Math.abs(currentTime - syncedTime) > 1; // Reduced threshold for better sync
+      Math.abs(playerTime - syncedTime) > 0.35 &&
+      !isUserSeeking;
 
     if (shouldSync) {
-      console.log("[YouTube] Syncing to:", syncedTime, "Leader:", syncLeader, "Current:", currentTime);
+      console.log("[YouTube] Syncing to:", syncedTime, "Leader:", syncLeader, "Current:", playerTime);
       try {
         playerRef.current.seekTo(syncedTime, true);
-        setCurrentTime(syncedTime);
+        // Ensure we don't auto-resume if room says paused
+        if (!isPlaying) {
+          playerRef.current.pauseVideo();
+        }
       } catch (error) {
         console.error("[YouTube] Error syncing:", error);
       }
@@ -285,11 +300,12 @@ export function YouTubePlayer({
     syncedTime,
     lastSyncUpdate,
     playerReady,
-    isUserSeeking,
-    currentTime,
     memberSyncStates,
     syncLeader,
     userId,
+    isPlaying,
+    isUserSeeking,
+    currentTime,
   ]);
 
   // Handle playback state sync - sync play/pause with leader
