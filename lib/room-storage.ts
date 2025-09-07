@@ -16,11 +16,12 @@ interface RoomData {
   syncLeader?: string; // userId of the person others are syncing to
 }
 
-// Simple in-memory WebSocket server simulation for real-time updates
+// Enhanced WebSocket server simulation with cross-tab communication
 class WebSocketServer {
   private static rooms: Map<string, RoomData> = new Map();
   private static listeners: Map<string, ((data: RoomData) => void)[]> =
     new Map();
+  private static storageKey = "websocket_room_updates";
 
   static joinRoom(
     roomId: string,
@@ -39,6 +40,25 @@ class WebSocketServer {
       callback(this.rooms.get(normalizedRoomId)!);
     }
 
+    // Set up cross-tab communication
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === this.storageKey && e.newValue) {
+        try {
+          const update = JSON.parse(e.newValue);
+          if (update.roomId === normalizedRoomId) {
+            console.log("[WebSocket] Cross-tab update received:", update);
+            this.rooms.set(normalizedRoomId, update.data);
+            const roomListeners = this.listeners.get(normalizedRoomId) || [];
+            roomListeners.forEach((listener) => listener(update.data));
+          }
+        } catch (error) {
+          console.error("[WebSocket] Error parsing cross-tab update:", error);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
     // Return cleanup function
     return () => {
       const roomListeners = this.listeners.get(normalizedRoomId) || [];
@@ -46,6 +66,7 @@ class WebSocketServer {
       if (index > -1) {
         roomListeners.splice(index, 1);
       }
+      window.removeEventListener('storage', handleStorageChange);
     };
   }
 
@@ -53,9 +74,23 @@ class WebSocketServer {
     const normalizedRoomId = roomId.toUpperCase();
     this.rooms.set(normalizedRoomId, data);
 
-    // Notify all listeners
+    // Notify all listeners in current tab
     const roomListeners = this.listeners.get(normalizedRoomId) || [];
     roomListeners.forEach((listener) => listener(data));
+
+    // Notify other tabs via localStorage
+    try {
+      const update = {
+        roomId: normalizedRoomId,
+        data: data,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(this.storageKey, JSON.stringify(update));
+      // Remove the item immediately to trigger storage event
+      setTimeout(() => localStorage.removeItem(this.storageKey), 100);
+    } catch (error) {
+      console.error("[WebSocket] Error sending cross-tab update:", error);
+    }
   }
 
   static getRoom(roomId: string): RoomData | null {

@@ -256,10 +256,27 @@ function JoinRoomCard() {
     setError("");
 
     try {
-      const upperRoomId = idToJoin.toUpperCase();
-      
+      let targetId = idToJoin.trim();
+
+      // Support pasting the full share URL: extract roomId and query if present
+      try {
+        if (targetId.startsWith("http://") || targetId.startsWith("https://")) {
+          const url = new URL(targetId);
+          const parts = url.pathname.split("/").filter(Boolean);
+          const idx = parts.findIndex((p) => p === "room");
+          if (idx >= 0 && parts[idx + 1]) {
+            targetId = parts[idx + 1];
+          }
+        }
+      } catch {}
+
+      const upperRoomId = targetId.toUpperCase();
+
       // Try to join the room using the proper method
-      const roomData = await RoomStorage.joinRoomFromUrl(upperRoomId, new URLSearchParams());
+      let roomData = await RoomStorage.getRoomData(upperRoomId);
+      if (!roomData) {
+        roomData = await RoomStorage.joinRoomFromUrl(upperRoomId, new URLSearchParams());
+      }
       
       if (roomData) {
         localStorage.setItem("currentRoom", upperRoomId);

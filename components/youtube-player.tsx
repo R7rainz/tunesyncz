@@ -231,6 +231,15 @@ export function YouTubePlayer({
           const time = playerRef.current.getCurrentTime();
           if (typeof time === "number" && !isNaN(time)) {
             setCurrentTime(time);
+            
+            // If user is the sync leader, update synced time for others
+            const isUserLeader = syncLeader === userId;
+            if (isUserLeader && userId) {
+              // Send time update every 2 seconds for sync
+              if (Math.floor(time) % 2 === 0) {
+                onSeek(time);
+              }
+            }
           }
         } catch (error) {
           console.error("[YouTube] Error getting current time:", error);
@@ -247,7 +256,7 @@ export function YouTubePlayer({
         clearInterval(intervalRef.current);
       }
     };
-  }, [playerReady, playerState]);
+  }, [playerReady, playerState, syncLeader, userId, onSeek]);
 
   // Handle sync time updates - sync if user is syncing and not the leader
   useEffect(() => {
@@ -261,10 +270,10 @@ export function YouTubePlayer({
       !isUserLeader &&
       syncedTime > 0 &&
       lastSyncUpdate > 0 &&
-      Math.abs(currentTime - syncedTime) > 2; // Only sync if difference is significant
+      Math.abs(currentTime - syncedTime) > 1; // Reduced threshold for better sync
 
     if (shouldSync) {
-      console.log("[YouTube] Syncing to:", syncedTime, "Leader:", syncLeader);
+      console.log("[YouTube] Syncing to:", syncedTime, "Leader:", syncLeader, "Current:", currentTime);
       try {
         playerRef.current.seekTo(syncedTime, true);
         setCurrentTime(syncedTime);
@@ -282,6 +291,31 @@ export function YouTubePlayer({
     syncLeader,
     userId,
   ]);
+
+  // Handle playback state sync - sync play/pause with leader
+  useEffect(() => {
+    if (!playerReady || !playerRef.current || !userId) return;
+
+    const isUserSyncing = memberSyncStates[userId] || false;
+    const isUserLeader = syncLeader === userId;
+    
+    // If user is syncing and not the leader, sync playback state
+    if (isUserSyncing && !isUserLeader) {
+      try {
+        const currentState = playerRef.current.getPlayerState();
+        
+        if (isPlaying && currentState !== window.YT.PlayerState.PLAYING) {
+          console.log("[YouTube] Syncing play state - playing");
+          playerRef.current.playVideo();
+        } else if (!isPlaying && currentState === window.YT.PlayerState.PLAYING) {
+          console.log("[YouTube] Syncing play state - pausing");
+          playerRef.current.pauseVideo();
+        }
+      } catch (error) {
+        console.error("[YouTube] Error syncing playback state:", error);
+      }
+    }
+  }, [isPlaying, playerReady, memberSyncStates, syncLeader, userId]);
 
   // Handle volume changes
   useEffect(() => {

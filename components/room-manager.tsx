@@ -151,10 +151,41 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
   }, [roomId, toast]);
 
   useEffect(() => {
-    loadRoomData();
-    const interval = setInterval(loadRoomData, 1500);
-    return () => clearInterval(interval);
-  }, [loadRoomData]);
+    let unsubscribe: (() => void) | null = null;
+
+    const setupRealTimeSync = async () => {
+      try {
+        console.log("[RoomManager] Setting up real-time sync for room:", roomId);
+        // Use real-time subscription instead of polling
+        unsubscribe = await RoomStorage.joinRoomRealTime(roomId, (data) => {
+          console.log("[RoomManager] Real-time update received:", {
+            roomId: data.id,
+            members: data.members,
+            queueLength: data.queue.length,
+            isPlaying: data.isPlaying,
+            currentSong: data.currentSong?.snippet?.title
+          });
+          setRoomData(data);
+        });
+        console.log("[RoomManager] Real-time sync setup successful");
+      } catch (error) {
+        console.error("[RoomManager] Failed to setup real-time sync:", error);
+        // Fallback to polling if real-time fails
+        console.log("[RoomManager] Falling back to polling");
+        loadRoomData();
+        const interval = setInterval(loadRoomData, 2000);
+        return () => clearInterval(interval);
+      }
+    };
+
+    setupRealTimeSync();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [roomId, loadRoomData]);
 
   const updateRoomData = useCallback(
     async (updates: Partial<RoomData>) => {
@@ -162,11 +193,16 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
       const updatedRoom = { ...roomData, ...updates, lastActivity: Date.now() };
 
-      // Use enhanced updateRoom that syncs to server
-      await RoomStorage.updateRoom(roomId, updatedRoom);
-      setRoomData(updatedRoom);
+      console.log("[RoomManager] Updating room data:", {
+        roomId,
+        updates,
+        newMemberCount: updatedRoom.members?.length,
+        newQueueLength: updatedRoom.queue?.length
+      });
 
-      console.log("updated room data:", updates);
+      // Use real-time update method for instant sync
+      await RoomStorage.updateRoomRealTime(roomId, updatedRoom);
+      // Don't set local state here - let real-time subscription handle it
     },
     [roomData, roomId],
   );
@@ -291,12 +327,18 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
       const canControl = canUserControl(userId);
       if (!canControl) return;
 
-      updateRoomData({
-        syncedTime: time,
-        lastSyncUpdate: Date.now(),
-      });
+      // Only update if user is the sync leader or creator
+      const isUserLeader = getSyncLeader() === userId;
+      const isCreator = roomData.creator === userId;
+      
+      if (isUserLeader || isCreator) {
+        updateRoomData({
+          syncedTime: time,
+          lastSyncUpdate: Date.now(),
+        });
+      }
     },
-    [roomData, updateRoomData, userId, canUserControl],
+    [roomData, updateRoomData, userId, canUserControl, getSyncLeader],
   );
 
   const handleNext = useCallback(() => {
@@ -397,6 +439,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
     const currentSyncStates = getMemberSyncStates();
     const newSyncState = !currentSyncStates[targetUserId];
+    const currentLeader = getSyncLeader();
     
     const updatedSyncStates = {
       ...currentSyncStates,
@@ -408,22 +451,41 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
       lastSyncUpdate: Date.now(),
     };
 
-    // If user is enabling sync and there's no current leader, they become the leader
-    if (newSyncState && !getSyncLeader()) {
-      updates.syncLeader = targetUserId;
+    // If user is enabling sync
+    if (newSyncState) {
+      // If there's no current leader, they become the leader
+      if (!currentLeader) {
+        updates.syncLeader = targetUserId;
+        console.log("[RoomManager] User became sync leader:", targetUserId);
+      }
+      // If there's already a leader, they join the sync group
+      else {
+        console.log("[RoomManager] User joined sync group, leader:", currentLeader);
+      }
     }
-    // If user is disabling sync and they were the leader, clear the leader
-    else if (!newSyncState && getSyncLeader() === targetUserId) {
-      updates.syncLeader = undefined;
+    // If user is disabling sync
+    else {
+      // If they were the leader, transfer leadership to another syncing user
+      if (currentLeader === targetUserId) {
+        const syncingUsers = Object.keys(updatedSyncStates).filter(user => updatedSyncStates[user]);
+        if (syncingUsers.length > 0) {
+          updates.syncLeader = syncingUsers[0];
+          console.log("[RoomManager] Leadership transferred to:", syncingUsers[0]);
+        } else {
+          updates.syncLeader = undefined;
+          console.log("[RoomManager] No more syncing users, cleared leader");
+        }
+      }
     }
 
     updateRoomData(updates);
 
     const action = newSyncState ? "enabled" : "disabled";
     const targetName = targetUserId === userId ? "You" : targetUserId;
+    const leaderInfo = newSyncState && updates.syncLeader === targetUserId ? " (now leader)" : "";
     toast({
       title: `Sync play ${action}`,
-      description: `${targetName} ${action} sync play`,
+      description: `${targetName} ${action} sync play${leaderInfo}`,
     });
   }, [roomData, updateRoomData, userId, getMemberSyncStates, getSyncLeader]);
 

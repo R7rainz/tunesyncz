@@ -26,13 +26,34 @@ export default function RoomPage() {
           // If room doesn't exist locally, try to join from URL parameters
           if (!roomData) {
             console.log("[v0] Room not found locally, joining from URL")
-            roomData = await RoomStorage.joinRoomFromUrl(roomId, searchParams)
+            // Convert Next.js ReadonlyURLSearchParams to standard URLSearchParams
+            const urlParams = new URLSearchParams(searchParams.toString())
+            roomData = await RoomStorage.joinRoomFromUrl(roomId, urlParams)
           }
 
-          console.log("[v0] Final room data:", roomData)
+          // Final fallback: attempt join with empty params to create local room
+          if (!roomData) {
+            console.log("[v0] Room still not found, creating fallback room")
+            roomData = await RoomStorage.joinRoomFromUrl(roomId, new URLSearchParams())
+          }
+
+          console.log("[v0] Final room data:", {
+            id: roomData?.id,
+            members: roomData?.members,
+            memberCount: roomData?.members?.length
+          })
+          
           if (roomData) {
             localStorage.setItem("currentRoom", roomId)
             setRoomExists(true)
+            
+            // Ensure the user is in the members list and sync the update
+            const userId = RoomStorage.getCurrentUserId()
+            if (!roomData.members.includes(userId)) {
+              console.log("[v0] Adding user to members list:", userId)
+              roomData.members.push(userId)
+              await RoomStorage.updateRoomRealTime(roomId, roomData)
+            }
           } else {
             console.log("[v0] Failed to load or create room")
             setRoomExists(false)
