@@ -11,6 +11,9 @@ interface RoomData {
   currentSong: any;
   isPlaying: boolean;
   lastActivity?: number;
+  // New per-user sync play system
+  memberSyncStates?: Record<string, boolean>; // userId -> sync enabled
+  syncLeader?: string; // userId of the person others are syncing to
 }
 
 // Simple in-memory WebSocket server simulation for real-time updates
@@ -226,6 +229,8 @@ export class RoomStorage {
       lastSyncUpdate: Date.now(),
       currentSong: null,
       isPlaying: false,
+      memberSyncStates: {},
+      syncLeader: undefined,
     };
 
     // Try external storage first
@@ -334,6 +339,8 @@ export class RoomStorage {
           lastSyncUpdate: Date.now(),
           currentSong: null,
           isPlaying: false,
+          memberSyncStates: {},
+          syncLeader: undefined,
         };
       } catch {
         roomData = this.createFallbackRoom(upperRoomId, userId);
@@ -366,6 +373,8 @@ export class RoomStorage {
       lastSyncUpdate: Date.now(),
       currentSong: null,
       isPlaying: false,
+      memberSyncStates: {},
+      syncLeader: undefined,
     };
   }
 

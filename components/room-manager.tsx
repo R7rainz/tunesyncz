@@ -28,6 +28,8 @@ import {
   VolumeX,
   ChevronUp,
   ChevronDown,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { YouTubeSearch } from "@/components/youtube-search";
@@ -65,12 +67,15 @@ interface RoomData {
   createdAt: number;
   queue: any[];
   members: string[];
-  syncPlay: boolean;
+  syncPlay: boolean; // Keep for backward compatibility
   syncedTime: number;
   lastSyncUpdate: number;
   currentSong: any;
   isPlaying: boolean;
   lastActivity?: number;
+  // New per-user sync play system
+  memberSyncStates?: Record<string, boolean>; // userId -> sync enabled
+  syncLeader?: string; // userId of the person others are syncing to
 }
 
 interface RoomManagerProps {
@@ -91,6 +96,32 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     const user = RoomStorage.getCurrentUserId();
     setUserId(user);
   }, []);
+
+  // Helper functions for new sync play system
+  const getMemberSyncStates = () => {
+    return roomData?.memberSyncStates || {};
+  };
+
+  const isUserSyncing = (user: string) => {
+    return getMemberSyncStates()[user] || false;
+  };
+
+  const getSyncLeader = () => {
+    return roomData?.syncLeader;
+  };
+
+  const getSyncedUsers = () => {
+    const syncStates = getMemberSyncStates();
+    return Object.keys(syncStates).filter(user => syncStates[user]);
+  };
+
+  const canUserControl = (user: string) => {
+    if (!roomData) return false;
+    // Creator can always control
+    if (user === roomData.creator) return true;
+    // User can control if they have sync play enabled
+    return isUserSyncing(user);
+  };
 
   const loadRoomData = useCallback(async () => {
     try {
@@ -234,21 +265,30 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
   const handlePlayPause = useCallback(() => {
     if (!roomData) return;
 
-    const canControl = roomData.syncPlay || roomData.creator === userId;
+    const canControl = canUserControl(userId);
     if (!canControl) return;
 
     const newPlayingState = !roomData.isPlaying;
-    updateRoomData({
+    
+    // If this user is enabling sync play, they become the sync leader
+    const updates: Partial<RoomData> = {
       isPlaying: newPlayingState,
       lastSyncUpdate: Date.now(),
-    });
-  }, [roomData, updateRoomData, userId]);
+    };
+
+    // If user is syncing and starting playback, they become the leader
+    if (newPlayingState && isUserSyncing(userId)) {
+      updates.syncLeader = userId;
+    }
+
+    updateRoomData(updates);
+  }, [roomData, updateRoomData, userId, canUserControl, isUserSyncing]);
 
   const handleSeek = useCallback(
     (time: number) => {
       if (!roomData) return;
 
-      const canControl = roomData.syncPlay || roomData.creator === userId;
+      const canControl = canUserControl(userId);
       if (!canControl) return;
 
       updateRoomData({
@@ -256,13 +296,13 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
         lastSyncUpdate: Date.now(),
       });
     },
-    [roomData, updateRoomData, userId],
+    [roomData, updateRoomData, userId, canUserControl],
   );
 
   const handleNext = useCallback(() => {
     if (!roomData) return;
 
-    const canControl = roomData.syncPlay || roomData.creator === userId;
+    const canControl = canUserControl(userId);
     if (!canControl) return;
 
     const nextSong = roomData.queue[0];
@@ -275,7 +315,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
       syncedTime: 0,
       lastSyncUpdate: Date.now(),
     });
-  }, [roomData, updateRoomData, userId]);
+  }, [roomData, updateRoomData, userId, canUserControl]);
 
   const leaveRoom = useCallback(async () => {
     if (roomData) {
@@ -351,6 +391,41 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
       });
     }
   };
+
+  const toggleUserSyncPlay = useCallback((targetUserId: string) => {
+    if (!roomData) return;
+
+    const currentSyncStates = getMemberSyncStates();
+    const newSyncState = !currentSyncStates[targetUserId];
+    
+    const updatedSyncStates = {
+      ...currentSyncStates,
+      [targetUserId]: newSyncState
+    };
+
+    const updates: Partial<RoomData> = {
+      memberSyncStates: updatedSyncStates,
+      lastSyncUpdate: Date.now(),
+    };
+
+    // If user is enabling sync and there's no current leader, they become the leader
+    if (newSyncState && !getSyncLeader()) {
+      updates.syncLeader = targetUserId;
+    }
+    // If user is disabling sync and they were the leader, clear the leader
+    else if (!newSyncState && getSyncLeader() === targetUserId) {
+      updates.syncLeader = undefined;
+    }
+
+    updateRoomData(updates);
+
+    const action = newSyncState ? "enabled" : "disabled";
+    const targetName = targetUserId === userId ? "You" : targetUserId;
+    toast({
+      title: `Sync play ${action}`,
+      description: `${targetName} ${action} sync play`,
+    });
+  }, [roomData, updateRoomData, userId, getMemberSyncStates, getSyncLeader]);
 
   const removeMember = (memberId: string) => {
     if (roomData?.creator === userId && memberId !== userId) {
@@ -454,12 +529,8 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
                     {roomData.members.length} members
                   </span>
                   <div className="flex items-center gap-1">
-                    {roomData.syncPlay ? (
-                      <Volume2 className="h-4 w-4 text-cyan-400" />
-                    ) : (
-                      <VolumeX className="h-4 w-4" />
-                    )}
-                    <span>Sync: {roomData.syncPlay ? "On" : "Off"}</span>
+                    <Users className="h-4 w-4 text-cyan-400" />
+                    <span>Synced: {getSyncedUsers().length}/{roomData.members.length}</span>
                   </div>
                 </div>
               </div>
@@ -573,6 +644,9 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
               roomId={roomId}
               syncedTime={roomData.syncedTime || 0}
               lastSyncUpdate={roomData.lastSyncUpdate || 0}
+              memberSyncStates={getMemberSyncStates()}
+              syncLeader={getSyncLeader()}
+              userId={userId}
             />
 
             <Card className="bg-gray-900/50 border-gray-700">
@@ -704,7 +778,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
                   {roomData.members.map((memberId, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between"
+                      className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800/30 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -719,17 +793,54 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
                             Creator
                           </Badge>
                         )}
+                        {isUserSyncing(memberId) && (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs bg-green-600 text-white"
+                          >
+                            Syncing
+                          </Badge>
+                        )}
+                        {getSyncLeader() === memberId && (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs bg-orange-600 text-white"
+                          >
+                            Leader
+                          </Badge>
+                        )}
                       </div>
-                      {isCreator && memberId !== userId && (
+                      <div className="flex items-center gap-1">
+                        {/* Sync play toggle for each member */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => removeMember(memberId)}
-                          className="h-6 w-6 p-0 text-gray-400 hover:text-red-400 hover:bg-gray-700"
+                          onClick={() => toggleUserSyncPlay(memberId)}
+                          className={`h-6 w-6 p-0 ${
+                            isUserSyncing(memberId)
+                              ? "text-green-400 hover:text-green-300"
+                              : "text-gray-400 hover:text-gray-200"
+                          } hover:bg-gray-700`}
+                          title={isUserSyncing(memberId) ? "Disable sync play" : "Enable sync play"}
                         >
-                          <UserMinus className="h-3 w-3" />
+                          {isUserSyncing(memberId) ? (
+                            <Wifi className="h-3 w-3" />
+                          ) : (
+                            <WifiOff className="h-3 w-3" />
+                          )}
                         </Button>
-                      )}
+                        {/* Remove member button (only for creator) */}
+                        {isCreator && memberId !== userId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeMember(memberId)}
+                            className="h-6 w-6 p-0 text-gray-400 hover:text-red-400 hover:bg-gray-700"
+                          >
+                            <UserMinus className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -740,44 +851,69 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
             <Card className="bg-gray-900/50 border-gray-700">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2 text-gray-100">
-                  {roomData.syncPlay ? (
-                    <Volume2 className="h-5 w-5 text-cyan-400" />
-                  ) : (
-                    <VolumeX className="h-5 w-5 text-gray-400" />
-                  )}
-                  Sync Play
+                  <Users className="h-5 w-5 text-cyan-400" />
+                  Sync Play Status
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300">Status:</span>
+                    <span className="text-sm text-gray-300">Synced Users:</span>
                     <Badge
-                      variant={roomData.syncPlay ? "default" : "secondary"}
-                      className={
-                        roomData.syncPlay
-                          ? "bg-cyan-600 text-white"
-                          : "bg-gray-700 text-gray-300"
-                      }
+                      variant="default"
+                      className="bg-cyan-600 text-white"
                     >
-                      {roomData.syncPlay ? "Enabled" : "Disabled"}
+                      {getSyncedUsers().length}
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-400">
-                    {roomData.syncPlay
-                      ? "All members can now control playback and music syncs across devices"
-                      : "Only the room creator can control playback"}
-                  </p>
-                  {isCreator && (
+                  
+                  {getSyncLeader() && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-300">Sync Leader:</span>
+                      <Badge
+                        variant="secondary"
+                        className="bg-orange-600 text-white"
+                      >
+                        {getSyncLeader() === userId ? "You" : getSyncLeader()}
+                      </Badge>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-400">
+                      Users with sync play enabled can control playback and will sync with the leader.
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      • Creator can always control<br/>
+                      • Members can control when syncing<br/>
+                      • Sync leader controls the timeline for others
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-700">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={toggleSyncPlay}
-                      className="w-full bg-transparent border-gray-600 text-gray-300 hover:bg-gray-700"
+                      onClick={() => toggleUserSyncPlay(userId)}
+                      className={`w-full bg-transparent border-gray-600 hover:bg-gray-700 ${
+                        isUserSyncing(userId)
+                          ? "text-green-400 border-green-600"
+                          : "text-gray-300"
+                      }`}
                     >
-                      {roomData.syncPlay ? "Disable" : "Enable"} Sync Play
+                      {isUserSyncing(userId) ? (
+                        <>
+                          <WifiOff className="h-4 w-4 mr-2" />
+                          Disable Your Sync
+                        </>
+                      ) : (
+                        <>
+                          <Wifi className="h-4 w-4 mr-2" />
+                          Enable Your Sync
+                        </>
+                      )}
                     </Button>
-                  )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

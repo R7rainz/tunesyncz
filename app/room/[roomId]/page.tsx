@@ -15,26 +15,42 @@ export default function RoomPage() {
   const [roomExists, setRoomExists] = useState(false)
 
   useEffect(() => {
-    if (roomId) { 
-      console.log("[v0] Loading room:", roomId)
-      let roomData = RoomStorage.getRoomData(roomId)
+    const loadRoom = async () => {
+      if (roomId) { 
+        console.log("[v0] Loading room:", roomId)
+        
+        try {
+          // First try to get existing room data
+          let roomData = await RoomStorage.getRoomData(roomId)
 
-      // If room doesn't exist locally, try to join from URL parameters
-      if (!roomData) {
-        console.log("[v0] Room not found locally, joining from URL")
-        roomData = RoomStorage.joinRoomFromUrl(roomId, searchParams)
+          // If room doesn't exist locally, try to join from URL parameters
+          if (!roomData) {
+            console.log("[v0] Room not found locally, joining from URL")
+            roomData = await RoomStorage.joinRoomFromUrl(roomId, searchParams)
+          }
+
+          console.log("[v0] Final room data:", roomData)
+          if (roomData) {
+            localStorage.setItem("currentRoom", roomId)
+            setRoomExists(true)
+          } else {
+            console.log("[v0] Failed to load or create room")
+            setRoomExists(false)
+          }
+        } catch (error) {
+          console.error("[v0] Error loading room:", error)
+          setRoomExists(false)
+        }
       }
-
-      console.log("[v0] Final room data:", roomData)
-      localStorage.setItem("currentRoom", roomId)
-      setRoomExists(true)
+      setIsLoading(false)
     }
-    setIsLoading(false)
+
+    loadRoom()
   }, [roomId, searchParams])
 
   const handleLeaveRoom = () => {
     localStorage.removeItem("currentRoom")
-    router.push("/")
+    router.push("/dashboard")
   }
 
   if (isLoading) {
@@ -67,10 +83,10 @@ export default function RoomPage() {
           </p>
           <div className="space-y-2">
             <button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/dashboard")}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
             >
-              Go Home
+              Go to Dashboard
             </button>
             <p className="text-xs text-muted-foreground">
               💡 Make sure you're using the complete room link shared by the creator

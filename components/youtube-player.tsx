@@ -28,6 +28,10 @@ interface YouTubePlayerProps {
   roomId: string;
   syncedTime?: number;
   lastSyncUpdate?: number;
+  // New per-user sync props
+  memberSyncStates?: Record<string, boolean>;
+  syncLeader?: string;
+  userId?: string;
 }
 
 declare global {
@@ -48,6 +52,9 @@ export function YouTubePlayer({
   roomId,
   syncedTime = 0,
   lastSyncUpdate = 0,
+  memberSyncStates = {},
+  syncLeader,
+  userId,
 }: YouTubePlayerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -242,18 +249,22 @@ export function YouTubePlayer({
     };
   }, [playerReady, playerState]);
 
-  // Handle sync time updates
+  // Handle sync time updates - sync if user is syncing and not the leader
   useEffect(() => {
-    if (!playerReady || !playerRef.current || isUserSeeking) return;
+    if (!playerReady || !playerRef.current || isUserSeeking || !userId) return;
 
+    const isUserSyncing = memberSyncStates[userId] || false;
+    const isUserLeader = syncLeader === userId;
+    
     const shouldSync =
-      syncPlay &&
+      isUserSyncing &&
+      !isUserLeader &&
       syncedTime > 0 &&
       lastSyncUpdate > 0 &&
       Math.abs(currentTime - syncedTime) > 2; // Only sync if difference is significant
 
     if (shouldSync) {
-      console.log("[YouTube] Syncing to:", syncedTime);
+      console.log("[YouTube] Syncing to:", syncedTime, "Leader:", syncLeader);
       try {
         playerRef.current.seekTo(syncedTime, true);
         setCurrentTime(syncedTime);
@@ -265,9 +276,11 @@ export function YouTubePlayer({
     syncedTime,
     lastSyncUpdate,
     playerReady,
-    syncPlay,
     isUserSeeking,
     currentTime,
+    memberSyncStates,
+    syncLeader,
+    userId,
   ]);
 
   // Handle volume changes
@@ -300,8 +313,8 @@ export function YouTubePlayer({
       }
     }
 
-    if (syncPlay || isCreator) {
-      console.log("[YouTube] Seek to:", newTime, "- syncPlay:", syncPlay, "isCreator:", isCreator);
+    if (canControl) {
+      console.log("[YouTube] Seek to:", newTime, "- isCreator:", isCreator, "isUserSyncing:", isUserSyncing);
       onSeek(newTime);
     } else {
       console.log("[YouTube] Seek denied - insufficient permissions");
@@ -311,8 +324,8 @@ export function YouTubePlayer({
   };
 
   const handlePlayPause = () => {
-    console.log("[YouTube] Play/Pause clicked - syncPlay:", syncPlay, "isCreator:", isCreator);
-    if (syncPlay || isCreator) {
+    console.log("[YouTube] Play/Pause clicked - isCreator:", isCreator, "isUserSyncing:", isUserSyncing);
+    if (canControl) {
       onPlayPause();
     } else {
       console.log("[YouTube] Control denied - insufficient permissions");
@@ -320,8 +333,8 @@ export function YouTubePlayer({
   };
 
   const handleNext = () => {
-    console.log("[YouTube] Next clicked - syncPlay:", syncPlay, "isCreator:", isCreator);
-    if (syncPlay || isCreator) {
+    console.log("[YouTube] Next clicked - isCreator:", isCreator, "isUserSyncing:", isUserSyncing);
+    if (canControl) {
       onNext();
     } else {
       console.log("[YouTube] Control denied - insufficient permissions");
@@ -337,7 +350,9 @@ export function YouTubePlayer({
     setIsMuted(!isMuted);
   };
 
-  const canControl = syncPlay || isCreator;
+  // New sync play logic - user can control if they're the creator or have sync enabled
+  const isUserSyncing = userId ? (memberSyncStates[userId] || false) : false;
+  const canControl = isCreator || isUserSyncing;
 
   if (!currentSong) {
     return (
@@ -384,20 +399,20 @@ export function YouTubePlayer({
             </div>
             <div className="flex items-center gap-2">
               <Badge
-                variant={syncPlay ? "default" : "secondary"}
+                variant={isUserSyncing ? "default" : "secondary"}
                 className="flex items-center gap-1 bg-gray-800 text-gray-200 border-gray-600"
               >
-                {syncPlay ? (
+                {isUserSyncing ? (
                   <>
                     <Wifi className="h-3 w-3" />
                     <Users className="h-3 w-3" />
-                    Synced
+                    Syncing
                   </>
                 ) : (
                   <>
                     <WifiOff className="h-3 w-3" />
                     <User className="h-3 w-3" />
-                    Creator Only
+                    {isCreator ? "Creator" : "Viewer"}
                   </>
                 )}
               </Badge>
@@ -513,9 +528,9 @@ export function YouTubePlayer({
 
           {!canControl && (
             <div className="text-center text-xs text-gray-500 p-2 bg-gray-800/50 rounded">
-              {syncPlay
-                ? "Sync play disabled"
-                : "Only room creator can control playback"}
+              {isCreator 
+                ? "You are the room creator" 
+                : "Enable sync play to control playback"}
             </div>
           )}
         </CardContent>
