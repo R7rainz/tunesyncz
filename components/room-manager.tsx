@@ -154,6 +154,11 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
           data.memberSyncStates = mergedStates;
         }
 
+        // Preserve queue if it was recently modified locally to prevent vanishing
+        if (Date.now() - lastLocalUpdateRef.current < 2000 && current && current.queue.length > 0) {
+          data.queue = current.queue;
+        }
+
         setRoomData(data);
         currentRoomRef.current = data;
       } else {
@@ -420,13 +425,16 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     const nextSong = roomData.queue[0];
     const newQueue = roomData.queue.slice(1);
 
-    updateRoomData({
-      currentSong: nextSong || null,
-      queue: newQueue,
-      isPlaying: !!nextSong,
-      syncedTime: 0,
-      lastSyncUpdate: Date.now(),
-    });
+    // Only update if there's actually a next song or we're stopping playback
+    if (nextSong || roomData.currentSong) {
+      updateRoomData({
+        currentSong: nextSong || null,
+        queue: newQueue,
+        isPlaying: !!nextSong,
+        syncedTime: 0,
+        lastSyncUpdate: Date.now(),
+      });
+    }
   }, [roomData, updateRoomData, userId, canUserControl]);
 
   const leaveRoom = useCallback(async () => {
