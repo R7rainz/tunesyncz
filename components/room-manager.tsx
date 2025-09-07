@@ -134,7 +134,28 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
       const data = await RoomStorage.getRoomData(roomId);
 
       if (data) {
+        // Freshness guard: only accept if newer than current
+        const current = currentRoomRef.current;
+        const isNewer =
+          !current ||
+          (data.lastActivity || 0) >= (current.lastActivity || 0) ||
+          (data.lastSyncUpdate || 0) >= (current.lastSyncUpdate || 0);
+
+        if (!isNewer) {
+          console.log("[RoomManager] Ignored stale fetch payload");
+          return;
+        }
+
+        // If we recently updated locally, preserve local sync state for current user
+        if (Date.now() - lastLocalUpdateRef.current < 4000 && current) {
+          const localStates = current.memberSyncStates || {};
+          const incomingStates = data.memberSyncStates || {};
+          const mergedStates = { ...incomingStates, [userId]: localStates[userId] };
+          data.memberSyncStates = mergedStates;
+        }
+
         setRoomData(data);
+        currentRoomRef.current = data;
       } else {
         console.error("No room data found for:", roomId);
         toast({
@@ -151,7 +172,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
         variant: "destructive",
       });
     }
-  }, [roomId, toast]);
+  }, [roomId, toast, userId]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;

@@ -169,11 +169,15 @@ export function YouTubePlayer({
               console.log("[YouTube] State changed:", newState);
               setPlayerState(newState);
 
-              // Handle video end
+              // Handle video end (only leader or creator triggers next)
               if (newState === window.YT.PlayerState.ENDED) {
-                setTimeout(() => {
-                  onNext();
-                }, 500);
+                const isUserSyncing = userId ? (memberSyncStates[userId] || false) : false;
+                const canControl = isCreator || isUserSyncing;
+                if (canControl) {
+                  setTimeout(() => {
+                    onNext();
+                  }, 300);
+                }
               }
             },
             onError: (event: any) => {
