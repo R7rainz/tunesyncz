@@ -94,6 +94,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
   const lastRealtimeRef = useRef<number>(Date.now());
   const currentRoomRef = useRef<RoomData | null>(null);
   const lastLocalUpdateRef = useRef<number>(0);
+  const lastNextCallRef = useRef<number>(0);
 
   useEffect(() => {
     const user = RoomStorage.getCurrentUserId();
@@ -396,11 +397,30 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
   const handleNext = useCallback(() => {
     if (!roomData) return;
 
+    // Debounce rapid calls to prevent multiple next triggers
+    const now = Date.now();
+    if (now - lastNextCallRef.current < 1000) return;
+    lastNextCallRef.current = now;
+
     const canControl = canUserControl(userId);
     if (!canControl) return;
 
+    // Only allow creator or sync leader to trigger next
+    const isUserLeader = getSyncLeader() === userId;
+    const isCreator = roomData.creator === userId;
+    
+    if (!isCreator && !isUserLeader) return;
+
     const nextSong = roomData.queue[0];
     const newQueue = roomData.queue.slice(1);
+
+    // Prevent playing the same song again
+    const currentSongId = roomData.currentSong?.id?.videoId;
+    const nextSongId = nextSong?.id?.videoId;
+    
+    if (currentSongId && nextSongId && currentSongId === nextSongId) {
+      return; // Don't play the same song again
+    }
 
     // Only update if there's actually a next song or we're stopping playback
     if (nextSong || roomData.currentSong) {
@@ -412,7 +432,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
         lastSyncUpdate: Date.now(),
       });
     }
-  }, [roomData, updateRoomData, userId, canUserControl]);
+  }, [roomData, updateRoomData, userId, canUserControl, getSyncLeader]);
 
   const leaveRoom = useCallback(async () => {
     if (roomData) {

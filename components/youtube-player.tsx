@@ -168,11 +168,12 @@ export function YouTubePlayer({
               // Handle video end (only leader or creator triggers next)
               if (newState === window.YT.PlayerState.ENDED) {
                 const isUserSyncing = userId ? (memberSyncStates[userId] || false) : false;
-                const canControl = isCreator || isUserSyncing;
+                const isUserLeader = syncLeader === userId;
+                const canControl = isCreator || (isUserSyncing && isUserLeader);
                 if (canControl) {
                   setTimeout(() => {
                     onNext();
-                  }, 300);
+                  }, 500);
                 }
               }
             },
