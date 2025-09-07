@@ -165,12 +165,21 @@ export function YouTubePlayer({
               const newState = event.data;
               setPlayerState(newState);
 
-              // Handle video end (only leader or creator triggers next)
+              // Handle video end - Fixed logic for queue advancement
               if (newState === window.YT.PlayerState.ENDED) {
                 const isUserSyncing = userId ? (memberSyncStates[userId] || false) : false;
                 const isUserLeader = syncLeader === userId;
-                const canControl = isCreator || (isUserSyncing && isUserLeader);
-                if (canControl) {
+                const noOneIsSyncing = Object.values(memberSyncStates).every(state => !state);
+                
+                // Allow advancement if:
+                // 1. User is creator, OR
+                // 2. User is syncing and is the leader, OR  
+                // 3. No one is syncing (fallback to allow progression)
+                const canAdvance = isCreator || 
+                                  (isUserSyncing && isUserLeader) || 
+                                  noOneIsSyncing;
+                
+                if (canAdvance) {
                   setTimeout(() => {
                     onNext();
                   }, 500);
@@ -186,7 +195,7 @@ export function YouTubePlayer({
         console.error("[YouTube] Error creating player:", error);
       }
     }
-  }, [apiReady, currentSong, currentVideoId]);
+  }, [apiReady, currentSong, currentVideoId, isCreator, memberSyncStates, syncLeader, userId, onNext]);
 
   // Control playback based on isPlaying prop
   useEffect(() => {
@@ -361,7 +370,6 @@ export function YouTubePlayer({
 
     if (canControl) {
       onSeek(newTime);
-    } else {
     }
 
     setTimeout(() => setIsUserSeeking(false), 1000);
@@ -370,14 +378,12 @@ export function YouTubePlayer({
   const handlePlayPause = () => {
     if (canControl) {
       onPlayPause();
-    } else {
     }
   };
 
   const handleNext = () => {
     if (canControl) {
       onNext();
-    } else {
     }
   };
 

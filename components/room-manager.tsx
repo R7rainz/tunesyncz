@@ -394,45 +394,46 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     [roomData, updateRoomData, userId, canUserControl, getSyncLeader],
   );
 
-  const handleNext = useCallback(() => {
+const handleNext = async () => {
+  try {
+    // Get current room data
+    const roomData = await RoomStorage.getRoomData(roomId);
     if (!roomData) return;
 
-    // Debounce rapid calls to prevent multiple next triggers
-    const now = Date.now();
-    if (now - lastNextCallRef.current < 1000) return;
-    lastNextCallRef.current = now;
+    console.log('Current queue before next:', roomData.queue);
+    console.log('Current song before next:', roomData.currentSong);
 
-    const canControl = canUserControl(userId);
-    if (!canControl) return;
-
-    // Only allow creator or sync leader to trigger next
-    const isUserLeader = getSyncLeader() === userId;
-    const isCreator = roomData.creator === userId;
-    
-    if (!isCreator && !isUserLeader) return;
-
-    const nextSong = roomData.queue[0];
-    const newQueue = roomData.queue.slice(1);
-
-    // Prevent playing the same song again
-    const currentSongId = roomData.currentSong?.id?.videoId;
-    const nextSongId = nextSong?.id?.videoId;
-    
-    if (currentSongId && nextSongId && currentSongId === nextSongId) {
-      return; // Don't play the same song again
-    }
-
-    // Only update if there's actually a next song or we're stopping playback
-    if (nextSong || roomData.currentSong) {
-      updateRoomData({
-        currentSong: nextSong || null,
-        queue: newQueue,
-        isPlaying: !!nextSong,
+    if (roomData.queue.length > 0) {
+      // Get the next song from queue
+      const nextSong = roomData.queue[0];
+      // Remove it from queue
+      const updatedQueue = roomData.queue.slice(1);
+      
+      console.log('Next song:', nextSong);
+      console.log('Updated queue after next:', updatedQueue);
+      
+      // Update room with new current song and updated queue
+      await RoomStorage.updateRoom(roomId, {
+        currentSong: nextSong,
+        queue: updatedQueue,
+        isPlaying: true,
+        syncedTime: 0,
+        lastSyncUpdate: Date.now(),
+      });
+    } else {
+      console.log('No more songs in queue, stopping playback');
+      // No more songs, stop playing
+      await RoomStorage.updateRoom(roomId, {
+        currentSong: null,
+        isPlaying: false,
         syncedTime: 0,
         lastSyncUpdate: Date.now(),
       });
     }
-  }, [roomData, updateRoomData, userId, canUserControl, getSyncLeader]);
+  } catch (error) {
+    console.error('Error in handleNext:', error);
+  }
+};
 
   const leaveRoom = useCallback(async () => {
     if (roomData) {
