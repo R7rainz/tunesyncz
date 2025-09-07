@@ -1,3 +1,7 @@
+// lib/room-storage-supabase.ts
+import { supabase, type RoomRow, type RoomInsert, type RoomUpdate } from './supabase'
+import { RealtimeChannel } from '@supabase/supabase-js'
+
 interface RoomData {
   id: string;
   name: string;
@@ -11,251 +15,158 @@ interface RoomData {
   currentSong: any;
   isPlaying: boolean;
   lastActivity?: number;
-  // New per-user sync play system
-  memberSyncStates?: Record<string, boolean>; // userId -> sync enabled
-  syncLeader?: string; // userId of the person others are syncing to
+  memberSyncStates?: Record<string, boolean>;
+  syncLeader?: string;
 }
 
-// Enhanced WebSocket server simulation with cross-tab communication
-class WebSocketServer {
-  private static rooms: Map<string, RoomData> = new Map();
-  private static listeners: Map<string, ((data: RoomData) => void)[]> =
-    new Map();
-  private static storageKey = "websocket_room_updates";
-
-  static joinRoom(
-    roomId: string,
-    callback: (data: RoomData) => void,
-  ): () => void {
-    const normalizedRoomId = roomId.toUpperCase();
-
-    if (!this.listeners.has(normalizedRoomId)) {
-      this.listeners.set(normalizedRoomId, []);
-    }
-
-    this.listeners.get(normalizedRoomId)!.push(callback);
-
-    // Send current room state immediately
-    if (this.rooms.has(normalizedRoomId)) {
-      callback(this.rooms.get(normalizedRoomId)!);
-    }
-
-    // Set up cross-tab communication
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === this.storageKey && e.newValue) {
-        try {
-          const update = JSON.parse(e.newValue);
-          if (update.roomId === normalizedRoomId) {
-            console.log("[WebSocket] Cross-tab update received:", update);
-            this.rooms.set(normalizedRoomId, update.data);
-            const roomListeners = this.listeners.get(normalizedRoomId) || [];
-            roomListeners.forEach((listener) => listener(update.data));
-          }
-        } catch (error) {
-          console.error("[WebSocket] Error parsing cross-tab update:", error);
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    // Return cleanup function
-    return () => {
-      const roomListeners = this.listeners.get(normalizedRoomId) || [];
-      const index = roomListeners.indexOf(callback);
-      if (index > -1) {
-        roomListeners.splice(index, 1);
-      }
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }
-
-  static updateRoom(roomId: string, data: RoomData): void {
-    const normalizedRoomId = roomId.toUpperCase();
-    this.rooms.set(normalizedRoomId, data);
-
-    // Notify all listeners in current tab
-    const roomListeners = this.listeners.get(normalizedRoomId) || [];
-    roomListeners.forEach((listener) => listener(data));
-
-    // Notify other tabs via localStorage
-    try {
-      const update = {
-        roomId: normalizedRoomId,
-        data: data,
-        timestamp: Date.now()
-      };
-      localStorage.setItem(this.storageKey, JSON.stringify(update));
-      // Remove the item immediately to trigger storage event
-      setTimeout(() => localStorage.removeItem(this.storageKey), 100);
-    } catch (error) {
-      console.error("[WebSocket] Error sending cross-tab update:", error);
-    }
-  }
-
-  static getRoom(roomId: string): RoomData | null {
-    return this.rooms.get(roomId.toUpperCase()) || null;
-  }
-
-  static roomExists(roomId: string): boolean {
-    return this.rooms.has(roomId.toUpperCase());
+// Convert database row to RoomData format
+function dbRowToRoomData(row: RoomRow): RoomData {
+  return {
+    id: row.id,
+    name: row.name,
+    creator: row.creator,
+    createdAt: row.created_at,
+    queue: row.queue || [],
+    members: row.members || [],
+    syncPlay: row.sync_play,
+    syncedTime: row.synced_time,
+    lastSyncUpdate: row.last_sync_update,
+    currentSong: row.current_song,
+    isPlaying: row.is_playing,
+    lastActivity: row.last_activity,
+    memberSyncStates: row.member_sync_states || {},
+    syncLeader: row.sync_leader || undefined,
   }
 }
 
-// Real cross-browser room storage using JSONBin API
-export class CrossBrowserRoomServer {
-  private static readonly API_BASE = "https://api.jsonbin.io/v3/b";
-  private static readonly API_KEY = "$2a$10$8K9Z8K9Z8K9Z8K9Z8K9Z8O"; // Demo key - replace with real one
-
-  // Create room on external server
-  static async createRoom(roomData: RoomData): Promise<string | null> {
-    try {
-      const response = await fetch(`${this.API_BASE}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Master-Key": this.API_KEY,
-          "X-Bin-Name": `music-room-${roomData.id}`,
-        },
-        body: JSON.stringify(roomData),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("[v0] Created room on server:", roomData.id);
-        return result.metadata.id;
-      }
-    } catch (error) {
-      console.log("[v0] External API not available, using fallback");
-    }
-    return null;
-  }
-
-  // Get room from external server
-  static async getRoom(binId: string): Promise<RoomData | null> {
-    try {
-      const response = await fetch(`${this.API_BASE}/${binId}/latest`, {
-        headers: {
-          "X-Master-Key": this.API_KEY,
-        },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        return result.record;
-      }
-    } catch (error) {
-      console.log("[v0] External API not available");
-    }
-    return null;
-  }
-
-  // Update room on external server
-  static async updateRoom(binId: string, roomData: RoomData): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.API_BASE}/${binId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Master-Key": this.API_KEY,
-        },
-        body: JSON.stringify(roomData),
-      });
-
-      return response.ok;
-    } catch (error) {
-      console.log("[v0] External API not available");
-    }
-    return false;
+// Convert RoomData to database insert format
+function roomDataToDbInsert(roomData: RoomData): RoomInsert {
+  return {
+    id: roomData.id,
+    name: roomData.name,
+    creator: roomData.creator,
+    created_at: roomData.createdAt,
+    queue: roomData.queue,
+    members: roomData.members,
+    sync_play: roomData.syncPlay,
+    synced_time: roomData.syncedTime,
+    last_sync_update: roomData.lastSyncUpdate,
+    current_song: roomData.currentSong,
+    is_playing: roomData.isPlaying,
+    last_activity: roomData.lastActivity || Date.now(),
+    member_sync_states: roomData.memberSyncStates || {},
+    sync_leader: roomData.syncLeader || null,
   }
 }
 
-// Enhanced local storage with better cross-browser simulation
+// Convert RoomData to database update format
+function roomDataToDbUpdate(updates: Partial<RoomData>): RoomUpdate {
+  const dbUpdate: RoomUpdate = {}
+  
+  if (updates.name !== undefined) dbUpdate.name = updates.name
+  if (updates.queue !== undefined) dbUpdate.queue = updates.queue
+  if (updates.members !== undefined) dbUpdate.members = updates.members
+  if (updates.syncPlay !== undefined) dbUpdate.sync_play = updates.syncPlay
+  if (updates.syncedTime !== undefined) dbUpdate.synced_time = updates.syncedTime
+  if (updates.lastSyncUpdate !== undefined) dbUpdate.last_sync_update = updates.lastSyncUpdate
+  if (updates.currentSong !== undefined) dbUpdate.current_song = updates.currentSong
+  if (updates.isPlaying !== undefined) dbUpdate.is_playing = updates.isPlaying
+  if (updates.memberSyncStates !== undefined) dbUpdate.member_sync_states = updates.memberSyncStates
+  if (updates.syncLeader !== undefined) dbUpdate.sync_leader = updates.syncLeader
+  if (updates.lastActivity !== undefined) dbUpdate.last_activity = updates.lastActivity
+  
+  return dbUpdate
+}
+
+// Enhanced local storage with better user ID generation
 export class LocalRoomStorage {
-  private static readonly GLOBAL_ROOMS_KEY = "global_music_rooms";
   private static readonly USER_ID_KEY = "music_app_user_id";
+  private static readonly USER_NAME_KEY = "music_app_user_name";
 
-  // Get or create user ID - improved to be more unique
   static getUserId(): string {
     let userId = localStorage.getItem(this.USER_ID_KEY);
     if (!userId) {
-      userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substring(2, 8);
+      userId = `user_${timestamp}_${random}`;
       localStorage.setItem(this.USER_ID_KEY, userId);
     }
     return userId;
   }
 
-  // Store room in global storage (simulates shared storage)
-  static storeGlobalRoom(roomData: RoomData): void {
-    try {
-      const globalRooms = this.getGlobalRooms();
-      globalRooms[roomData.id] = {
-        ...roomData,
-        lastActivity: Date.now(),
-      };
-      localStorage.setItem(this.GLOBAL_ROOMS_KEY, JSON.stringify(globalRooms));
-      console.log("[v0] Stored room globally:", roomData.id);
-    } catch (error) {
-      console.error("[v0] Failed to store global room:", error);
+  static getUserName(): string {
+    let userName = localStorage.getItem(this.USER_NAME_KEY);
+    if (!userName) {
+      userName = `User_${this.getUserId().split('_')[1]}`;
+      localStorage.setItem(this.USER_NAME_KEY, userName);
     }
+    return userName;
   }
 
-  // Get all global rooms
-  static getGlobalRooms(): Record<string, RoomData> {
-    try {
-      const data = localStorage.getItem(this.GLOBAL_ROOMS_KEY);
-      return data ? JSON.parse(data) : {};
-    } catch {
-      return {};
-    }
+  static setUserName(name: string): void {
+    localStorage.setItem(this.USER_NAME_KEY, name);
+  }
+}
+
+// Real-time subscription manager for Supabase
+class SupabaseRealTimeManager {
+  private static channels = new Map<string, RealtimeChannel>();
+
+  static subscribe(roomId: string, callback: (data: RoomData) => void): () => void {
+    const normalizedRoomId = roomId.toUpperCase();
+    
+    // Clean up existing channel
+    this.unsubscribe(normalizedRoomId);
+
+    // Create new channel
+    const channel = supabase
+      .channel(`room_${normalizedRoomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rooms',
+          filter: `id=eq.${normalizedRoomId}`,
+        },
+        (payload) => {
+          console.log('[Supabase] Real-time update:', payload);
+          if (payload.new) {
+            const roomData = dbRowToRoomData(payload.new as RoomRow);
+            callback(roomData);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Supabase] Subscription status:', status);
+      });
+
+    this.channels.set(normalizedRoomId, channel);
+
+    // Return cleanup function
+    return () => this.unsubscribe(normalizedRoomId);
   }
 
-  // Get specific room from global storage
-  static getGlobalRoom(roomId: string): RoomData | null {
-    const globalRooms = this.getGlobalRooms();
-    return globalRooms[roomId.toUpperCase()] || null;
-  }
-
-  // Add member to room
-  static addMemberToRoom(roomId: string, memberId: string): boolean {
-    const room = this.getGlobalRoom(roomId);
-    if (room && !room.members.includes(memberId)) {
-      room.members.push(memberId);
-      room.lastActivity = Date.now();
-      this.storeGlobalRoom(room);
-      console.log("[v0] Added member to room:", memberId, "->", roomId);
-      return true;
+  static unsubscribe(roomId: string): void {
+    const normalizedRoomId = roomId.toUpperCase();
+    const channel = this.channels.get(normalizedRoomId);
+    if (channel) {
+      supabase.removeChannel(channel);
+      this.channels.delete(normalizedRoomId);
     }
-    return false;
-  }
-
-  // Update room data
-  static updateGlobalRoom(roomId: string, updates: Partial<RoomData>): boolean {
-    const room = this.getGlobalRoom(roomId);
-    if (room) {
-      Object.assign(room, updates, { lastActivity: Date.now() });
-      this.storeGlobalRoom(room);
-      console.log("[v0] Updated global room:", roomId, updates);
-      return true;
-    }
-    return false;
   }
 }
 
 export class RoomStorage {
-  private static binIds: Record<string, string> = {};
-
-  // Create a shareable room with real cross-browser support
-  static async createShareableRoom(
-    roomName: string,
-  ): Promise<{ roomData: RoomData; shareUrl: string }> {
+  // Create a room that works across devices
+  static async createShareableRoom(roomName: string): Promise<{ roomData: RoomData; shareUrl: string }> {
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     const userId = LocalRoomStorage.getUserId();
 
     const roomData: RoomData = {
       id: roomId,
       name: roomName,
-      creator: userId, // Store actual user ID
+      creator: userId,
       createdAt: Date.now(),
       queue: [],
       members: [userId],
@@ -266,97 +177,69 @@ export class RoomStorage {
       isPlaying: false,
       memberSyncStates: {},
       syncLeader: undefined,
+      lastActivity: Date.now(),
     };
 
-    // Try external storage first
-    const binId = await CrossBrowserRoomServer.createRoom(roomData);
-    if (binId) {
-      this.binIds[roomId] = binId;
+    // Create room in Supabase
+    const { data, error } = await supabase
+      .from('rooms')
+      .insert(roomDataToDbInsert(roomData))
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Supabase] Failed to create room:', error);
+      throw new Error('Failed to create room on server');
     }
 
-    // Always store locally as backup
-    LocalRoomStorage.storeGlobalRoom(roomData);
+    // Also store locally as backup
     localStorage.setItem(`room_${roomId}`, JSON.stringify(roomData));
 
-    // Update WebSocket server for real-time
-    WebSocketServer.updateRoom(roomId, roomData);
-
-    // Create enhanced shareable URL
+    // Create shareable URL
     const roomInfo = {
       id: roomData.id,
       name: roomData.name,
       creator: roomData.creator,
       createdAt: roomData.createdAt,
-      binId: binId || undefined,
     };
 
     const encodedData = btoa(JSON.stringify(roomInfo));
     const shareUrl = `${window.location.origin}/room/${roomId}?data=${encodedData}`;
 
-    console.log("[v0] Created shareable room:", roomId, "URL:", shareUrl);
+    console.log('[RoomStorage] Created room:', roomId);
     return { roomData, shareUrl };
   }
 
-  // Join room with enhanced cross-browser support
-  static async joinRoomFromUrl(
-    roomId: string,
-    urlParams: URLSearchParams,
-  ): Promise<RoomData> {
+  // Join room from URL
+  static async joinRoomFromUrl(roomId: string, urlParams: URLSearchParams): Promise<RoomData> {
     const upperRoomId = roomId.toUpperCase();
     const userId = LocalRoomStorage.getUserId();
-    console.log("[v0] User", userId, "joining room:", upperRoomId);
+    
+    console.log('[RoomStorage] Joining room:', upperRoomId);
 
-    // Try to decode room info from URL
+    // Try to get existing room from Supabase
+    const { data: existingRoom, error: fetchError } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', upperRoomId)
+      .single();
+
+    if (existingRoom && !fetchError) {
+      // Add user to members if not already there
+      const roomData = dbRowToRoomData(existingRoom);
+      if (!roomData.members.includes(userId)) {
+        roomData.members.push(userId);
+        await this.updateRoom(upperRoomId, { members: roomData.members });
+      }
+      
+      // Store locally as cache
+      localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(roomData));
+      console.log('[RoomStorage] Joined existing room from Supabase');
+      return roomData;
+    }
+
+    // If room doesn't exist, try to create it from URL data
     const encodedData = urlParams.get("data");
-    let binId: string | undefined;
-
-    if (encodedData) {
-      try {
-        const roomInfo = JSON.parse(atob(encodedData));
-        binId = roomInfo.binId;
-        console.log("[v0] Decoded room info:", roomInfo);
-      } catch (error) {
-        console.error("[v0] Failed to decode room info:", error);
-      }
-    }
-
-    // Try external server first
-    if (binId) {
-      const serverRoom = await CrossBrowserRoomServer.getRoom(binId);
-      if (serverRoom) {
-        // Add current user to members if not already there
-        if (!serverRoom.members.includes(userId)) {
-          serverRoom.members.push(userId);
-          await CrossBrowserRoomServer.updateRoom(binId, serverRoom);
-        }
-
-        // Store locally
-        LocalRoomStorage.storeGlobalRoom(serverRoom);
-        localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(serverRoom));
-
-        // Update WebSocket server
-        WebSocketServer.updateRoom(upperRoomId, serverRoom);
-
-        console.log("[v0] Joined from external server:", serverRoom);
-        return serverRoom;
-      }
-    }
-
-    // Try global local storage
-    const globalRoom = LocalRoomStorage.getGlobalRoom(upperRoomId);
-    if (globalRoom) {
-      LocalRoomStorage.addMemberToRoom(upperRoomId, userId);
-      const updatedRoom = LocalRoomStorage.getGlobalRoom(upperRoomId)!;
-      localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(updatedRoom));
-
-      // Update WebSocket server
-      WebSocketServer.updateRoom(upperRoomId, updatedRoom);
-
-      console.log("[v0] Joined from global storage:", updatedRoom);
-      return updatedRoom;
-    }
-
-    // Create new room from URL data or fallback
     let roomData: RoomData;
 
     if (encodedData) {
@@ -376,22 +259,29 @@ export class RoomStorage {
           isPlaying: false,
           memberSyncStates: {},
           syncLeader: undefined,
+          lastActivity: Date.now(),
         };
       } catch {
         roomData = this.createFallbackRoom(upperRoomId, userId);
       }
     } else {
-      roomData = this.createFallbackRoom(upperRoomId, userId);
+      // Do NOT create a new room when no data is present; treat as missing room
+      console.warn('[RoomStorage] Room not found and no share data provided. Aborting join.');
+      throw new Error('Room not found');
     }
 
-    // Store the new room
-    LocalRoomStorage.storeGlobalRoom(roomData);
-    localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(roomData));
+    // Create room in Supabase
+    const { error: insertError } = await supabase
+      .from('rooms')
+      .insert(roomDataToDbInsert(roomData));
 
-    // Update WebSocket server
-    WebSocketServer.updateRoom(upperRoomId, roomData);
-
-    console.log("[v0] Created new room:", roomData);
+    if (insertError) {
+      console.error('[Supabase] Failed to create room:', insertError);
+      // If creation fails, propagate error so UI can report room not found
+      throw new Error('Failed to create room on server');
+    }
+    
+    console.log('[RoomStorage] Created new room:', roomData.id);
     return roomData;
   }
 
@@ -410,48 +300,38 @@ export class RoomStorage {
       isPlaying: false,
       memberSyncStates: {},
       syncLeader: undefined,
+      lastActivity: Date.now(),
     };
   }
 
-  // Get room data with enhanced sync
+  // Get room data from Supabase
   static async getRoomData(roomId: string): Promise<RoomData | null> {
     const upperRoomId = roomId.toUpperCase();
 
-    // Try WebSocket server first (real-time)
-    const wsRoom = WebSocketServer.getRoom(upperRoomId);
-    if (wsRoom) {
-      return wsRoom;
-    }
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', upperRoomId)
+        .single();
 
-    // Try external server
-    const binId = this.binIds[upperRoomId];
-    if (binId) {
-      const serverRoom = await CrossBrowserRoomServer.getRoom(binId);
-      if (serverRoom) {
-        LocalRoomStorage.storeGlobalRoom(serverRoom);
-        localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(serverRoom));
-        WebSocketServer.updateRoom(upperRoomId, serverRoom);
-        return serverRoom;
+      if (data && !error) {
+        const roomData = dbRowToRoomData(data);
+        // Update local cache
+        localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(roomData));
+        return roomData;
       }
+    } catch (error) {
+      console.error('[Supabase] Failed to get room:', error);
     }
 
-    // Try global storage
-    const globalRoom = LocalRoomStorage.getGlobalRoom(upperRoomId);
-    if (globalRoom) {
-      localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(globalRoom));
-      WebSocketServer.updateRoom(upperRoomId, globalRoom);
-      return globalRoom;
-    }
-
-    // Fallback to local storage
+    // Fallback to local cache
     const localRoom = localStorage.getItem(`room_${upperRoomId}`);
     if (localRoom) {
       try {
-        const roomData = JSON.parse(localRoom);
-        WebSocketServer.updateRoom(upperRoomId, roomData);
-        return roomData;
+        return JSON.parse(localRoom);
       } catch (error) {
-        console.error("Failed to parse room data:", error);
+        console.error('Failed to parse local room data:', error);
         localStorage.removeItem(`room_${upperRoomId}`);
       }
     }
@@ -459,29 +339,45 @@ export class RoomStorage {
     return null;
   }
 
-  // Update room with enhanced sync
-  static async updateRoom(roomId: string, roomData: RoomData): Promise<void> {
+  // Update room in Supabase
+  static async updateRoom(roomId: string, updates: Partial<RoomData>): Promise<void> {
     const upperRoomId = roomId.toUpperCase();
+    
+    // Add lastActivity to updates
+    const updatesWithActivity = {
+      ...updates,
+      lastActivity: Date.now(),
+    };
 
-    // Update external server
-    const binId = this.binIds[upperRoomId];
-    if (binId) {
-      await CrossBrowserRoomServer.updateRoom(binId, roomData);
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update(roomDataToDbUpdate(updatesWithActivity))
+        .eq('id', upperRoomId);
+
+      if (error) {
+        console.error('[Supabase] Failed to update room:', error);
+      } else {
+        console.log('[RoomStorage] Updated room in Supabase:', upperRoomId);
+      }
+    } catch (error) {
+      console.error('[Supabase] Update room error:', error);
     }
 
-    // Update global storage
-    LocalRoomStorage.storeGlobalRoom(roomData);
-
-    // Update local storage
-    localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(roomData));
-
-    // Update WebSocket server for real-time
-    WebSocketServer.updateRoom(upperRoomId, roomData);
-
-    console.log("[v0] Updated room across all storage:", upperRoomId);
+    // Always update local cache
+    const localRoom = localStorage.getItem(`room_${upperRoomId}`);
+    if (localRoom) {
+      try {
+        const roomData = JSON.parse(localRoom);
+        const updatedRoom = { ...roomData, ...updatesWithActivity };
+        localStorage.setItem(`room_${upperRoomId}`, JSON.stringify(updatedRoom));
+      } catch (error) {
+        console.error('Failed to update local cache:', error);
+      }
+    }
   }
 
-  // Real-time room subscription
+  // Real-time room subscription using Supabase
   static async joinRoomRealTime(
     roomId: string,
     onUpdate: (roomData: RoomData) => void,
@@ -491,60 +387,83 @@ export class RoomStorage {
     // Get initial room data
     const roomData = await this.getRoomData(upperRoomId);
     if (roomData) {
-      onUpdate(roomData);
+      // Ensure current user is part of members when joining in real-time
+      const currentUserId = this.getCurrentUserId();
+      if (!roomData.members.includes(currentUserId)) {
+        try {
+          const updatedMembers = [...roomData.members, currentUserId];
+          await this.updateRoom(upperRoomId, { members: updatedMembers });
+          // Optimistically update local cache/state before realtime event arrives
+          onUpdate({ ...roomData, members: updatedMembers });
+        } catch (e) {
+          console.error('[RoomStorage] Failed to add current user to members:', e);
+          onUpdate(roomData);
+        }
+      } else {
+        onUpdate(roomData);
+      }
     }
 
     // Subscribe to real-time updates
-    return WebSocketServer.joinRoom(upperRoomId, onUpdate);
+    return SupabaseRealTimeManager.subscribe(upperRoomId, onUpdate);
   }
 
   // Real-time room update
-  static async updateRoomRealTime(
-    roomId: string,
-    roomData: RoomData,
-  ): Promise<void> {
-    const upperRoomId = roomId.toUpperCase();
-
-    // Update all storage layers
-    await this.updateRoom(upperRoomId, roomData);
-
-    // WebSocket update is handled in updateRoom
+  static async updateRoomRealTime(roomId: string, updates: Partial<RoomData>): Promise<void> {
+    await this.updateRoom(roomId, updates);
   }
 
   // Check if room exists
-  static roomExists(roomId: string): boolean {
-    const upperRoomId = roomId.toUpperCase();
-
-    // Check WebSocket server
-    if (WebSocketServer.roomExists(upperRoomId)) {
-      return true;
-    }
-
-    // Check global storage
-    if (LocalRoomStorage.getGlobalRoom(upperRoomId) !== null) {
-      return true;
-    }
-
-    // Check local storage
-    return localStorage.getItem(`room_${upperRoomId}`) !== null;
+  static async roomExists(roomId: string): Promise<boolean> {
+    const roomData = await this.getRoomData(roomId);
+    return roomData !== null;
   }
 
-  static getUserRooms(): RoomData[] {
+  // Get current user info
+  static getCurrentUserId(): string {
+    return LocalRoomStorage.getUserId();
+  }
+
+  static getCurrentUserName(): string {
+    return LocalRoomStorage.getUserName();
+  }
+
+  static setCurrentUserName(name: string): void {
+    LocalRoomStorage.setUserName(name);
+  }
+
+  // Check if user is room creator
+  static isUserCreator(roomData: RoomData | null): boolean {
+    if (!roomData) return false;
+    return roomData.creator === this.getCurrentUserId();
+  }
+
+  // Get user rooms from Supabase
+  static async getUserRooms(): Promise<RoomData[]> {
+    const userId = this.getCurrentUserId();
+    
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .contains('members', [userId])
+        .order('created_at', { ascending: false });
+
+      if (data && !error) {
+        return data.map(dbRowToRoomData);
+      }
+    } catch (error) {
+      console.error('[Supabase] Failed to get user rooms:', error);
+    }
+
+    // Fallback to local storage
     const rooms: RoomData[] = [];
-    const globalRooms = LocalRoomStorage.getGlobalRooms();
-
-    // Add global rooms
-    Object.values(globalRooms).forEach((room) => {
-      rooms.push(room);
-    });
-
-    // Add local rooms not in global
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith("room_")) {
         try {
           const roomData = JSON.parse(localStorage.getItem(key)!);
-          if (!globalRooms[roomData.id]) {
+          if (roomData.members.includes(userId)) {
             rooms.push(roomData);
           }
         } catch (error) {
@@ -556,14 +475,23 @@ export class RoomStorage {
     return rooms.sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  // Get current user ID
-  static getCurrentUserId(): string {
-    return LocalRoomStorage.getUserId();
-  }
+  // Clean up old rooms (can be called periodically)
+  static async cleanupOldRooms(): Promise<void> {
+    try {
+      const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000);
+      
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .lt('last_activity', thirtyMinutesAgo);
 
-  // Check if user is room creator
-  static isUserCreator(roomData: RoomData | null): boolean {
-    if (!roomData) return false;
-    return roomData.creator === this.getCurrentUserId();
+      if (error) {
+        console.error('[Supabase] Failed to cleanup old rooms:', error);
+      } else {
+        console.log('[RoomStorage] Cleaned up old rooms');
+      }
+    } catch (error) {
+      console.error('[Supabase] Cleanup error:', error);
+    }
   }
 }

@@ -112,7 +112,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
   const getSyncedUsers = () => {
     const syncStates = getMemberSyncStates();
-    return Object.keys(syncStates).filter(user => syncStates[user]);
+    return Object.keys(syncStates).filter((user) => syncStates[user]);
   };
 
   const canUserControl = (user: string) => {
@@ -155,7 +155,10 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
     const setupRealTimeSync = async () => {
       try {
-        console.log("[RoomManager] Setting up real-time sync for room:", roomId);
+        console.log(
+          "[RoomManager] Setting up real-time sync for room:",
+          roomId,
+        );
         // Use real-time subscription instead of polling
         unsubscribe = await RoomStorage.joinRoomRealTime(roomId, (data) => {
           console.log("[RoomManager] Real-time update received:", {
@@ -163,7 +166,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
             members: data.members,
             queueLength: data.queue.length,
             isPlaying: data.isPlaying,
-            currentSong: data.currentSong?.snippet?.title
+            currentSong: data.currentSong?.snippet?.title,
           });
           setRoomData(data);
         });
@@ -197,12 +200,18 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
         roomId,
         updates,
         newMemberCount: updatedRoom.members?.length,
-        newQueueLength: updatedRoom.queue?.length
+        newQueueLength: updatedRoom.queue?.length,
       });
 
-      // Use real-time update method for instant sync
-      await RoomStorage.updateRoomRealTime(roomId, updatedRoom);
-      // Don't set local state here - let real-time subscription handle it
+      // Optimistically update local state for immediate UX response
+      setRoomData(updatedRoom);
+
+      // Persist to Supabase; realtime will reconcile if needed
+      try {
+        await RoomStorage.updateRoomRealTime(roomId, updatedRoom);
+      } catch (err) {
+        console.error("[RoomManager] Failed to persist room update:", err);
+      }
     },
     [roomData, roomId],
   );
@@ -305,7 +314,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     if (!canControl) return;
 
     const newPlayingState = !roomData.isPlaying;
-    
+
     // If this user is enabling sync play, they become the sync leader
     const updates: Partial<RoomData> = {
       isPlaying: newPlayingState,
@@ -330,7 +339,7 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
       // Only update if user is the sync leader or creator
       const isUserLeader = getSyncLeader() === userId;
       const isCreator = roomData.creator === userId;
-      
+
       if (isUserLeader || isCreator) {
         updateRoomData({
           syncedTime: time,
@@ -434,60 +443,74 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     }
   };
 
-  const toggleUserSyncPlay = useCallback((targetUserId: string) => {
-    if (!roomData) return;
+  const toggleUserSyncPlay = useCallback(
+    (targetUserId: string) => {
+      if (!roomData) return;
 
-    const currentSyncStates = getMemberSyncStates();
-    const newSyncState = !currentSyncStates[targetUserId];
-    const currentLeader = getSyncLeader();
-    
-    const updatedSyncStates = {
-      ...currentSyncStates,
-      [targetUserId]: newSyncState
-    };
+      const currentSyncStates = getMemberSyncStates();
+      const newSyncState = !currentSyncStates[targetUserId];
+      const currentLeader = getSyncLeader();
 
-    const updates: Partial<RoomData> = {
-      memberSyncStates: updatedSyncStates,
-      lastSyncUpdate: Date.now(),
-    };
+      const updatedSyncStates = {
+        ...currentSyncStates,
+        [targetUserId]: newSyncState,
+      };
 
-    // If user is enabling sync
-    if (newSyncState) {
-      // If there's no current leader, they become the leader
-      if (!currentLeader) {
-        updates.syncLeader = targetUserId;
-        console.log("[RoomManager] User became sync leader:", targetUserId);
-      }
-      // If there's already a leader, they join the sync group
-      else {
-        console.log("[RoomManager] User joined sync group, leader:", currentLeader);
-      }
-    }
-    // If user is disabling sync
-    else {
-      // If they were the leader, transfer leadership to another syncing user
-      if (currentLeader === targetUserId) {
-        const syncingUsers = Object.keys(updatedSyncStates).filter(user => updatedSyncStates[user]);
-        if (syncingUsers.length > 0) {
-          updates.syncLeader = syncingUsers[0];
-          console.log("[RoomManager] Leadership transferred to:", syncingUsers[0]);
-        } else {
-          updates.syncLeader = undefined;
-          console.log("[RoomManager] No more syncing users, cleared leader");
+      const updates: Partial<RoomData> = {
+        memberSyncStates: updatedSyncStates,
+        lastSyncUpdate: Date.now(),
+      };
+
+      // If user is enabling sync
+      if (newSyncState) {
+        // If there's no current leader, they become the leader
+        if (!currentLeader) {
+          updates.syncLeader = targetUserId;
+          console.log("[RoomManager] User became sync leader:", targetUserId);
+        }
+        // If there's already a leader, they join the sync group
+        else {
+          console.log(
+            "[RoomManager] User joined sync group, leader:",
+            currentLeader,
+          );
         }
       }
-    }
+      // If user is disabling sync
+      else {
+        // If they were the leader, transfer leadership to another syncing user
+        if (currentLeader === targetUserId) {
+          const syncingUsers = Object.keys(updatedSyncStates).filter(
+            (user) => updatedSyncStates[user],
+          );
+          if (syncingUsers.length > 0) {
+            updates.syncLeader = syncingUsers[0];
+            console.log(
+              "[RoomManager] Leadership transferred to:",
+              syncingUsers[0],
+            );
+          } else {
+            updates.syncLeader = undefined;
+            console.log("[RoomManager] No more syncing users, cleared leader");
+          }
+        }
+      }
 
-    updateRoomData(updates);
+      updateRoomData(updates);
 
-    const action = newSyncState ? "enabled" : "disabled";
-    const targetName = targetUserId === userId ? "You" : targetUserId;
-    const leaderInfo = newSyncState && updates.syncLeader === targetUserId ? " (now leader)" : "";
-    toast({
-      title: `Sync play ${action}`,
-      description: `${targetName} ${action} sync play${leaderInfo}`,
-    });
-  }, [roomData, updateRoomData, userId, getMemberSyncStates, getSyncLeader]);
+      const action = newSyncState ? "enabled" : "disabled";
+      const targetName = targetUserId === userId ? "You" : targetUserId;
+      const leaderInfo =
+        newSyncState && updates.syncLeader === targetUserId
+          ? " (now leader)"
+          : "";
+      toast({
+        title: `Sync play ${action}`,
+        description: `${targetName} ${action} sync play${leaderInfo}`,
+      });
+    },
+    [roomData, updateRoomData, userId, getMemberSyncStates, getSyncLeader],
+  );
 
   const removeMember = (memberId: string) => {
     if (roomData?.creator === userId && memberId !== userId) {
@@ -592,7 +615,10 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
                   </span>
                   <div className="flex items-center gap-1">
                     <Users className="h-4 w-4 text-cyan-400" />
-                    <span>Synced: {getSyncedUsers().length}/{roomData.members.length}</span>
+                    <span>
+                      Synced: {getSyncedUsers().length}/
+                      {roomData.members.length}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -883,7 +909,11 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
                               ? "text-green-400 hover:text-green-300"
                               : "text-gray-400 hover:text-gray-200"
                           } hover:bg-gray-700`}
-                          title={isUserSyncing(memberId) ? "Disable sync play" : "Enable sync play"}
+                          title={
+                            isUserSyncing(memberId)
+                              ? "Disable sync play"
+                              : "Enable sync play"
+                          }
                         >
                           {isUserSyncing(memberId) ? (
                             <Wifi className="h-3 w-3" />
@@ -921,17 +951,16 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-300">Synced Users:</span>
-                    <Badge
-                      variant="default"
-                      className="bg-cyan-600 text-white"
-                    >
+                    <Badge variant="default" className="bg-cyan-600 text-white">
                       {getSyncedUsers().length}
                     </Badge>
                   </div>
-                  
+
                   {getSyncLeader() && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-300">Sync Leader:</span>
+                      <span className="text-sm text-gray-300">
+                        Sync Leader:
+                      </span>
                       <Badge
                         variant="secondary"
                         className="bg-orange-600 text-white"
@@ -943,12 +972,14 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
 
                   <div className="space-y-2">
                     <p className="text-xs text-gray-400">
-                      Users with sync play enabled can control playback and will sync with the leader.
+                      Users with sync play enabled can control playback and will
+                      sync with the leader.
                     </p>
                     <p className="text-xs text-gray-500">
-                      • Creator can always control<br/>
-                      • Members can control when syncing<br/>
-                      • Sync leader controls the timeline for others
+                      • Creator can always control
+                      <br />
+                      • Members can control when syncing
+                      <br />• Sync leader controls the timeline for others
                     </p>
                   </div>
 
