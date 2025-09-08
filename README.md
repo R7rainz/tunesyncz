@@ -1,4 +1,4 @@
-# TunzSync 🎵
+# TuneSyncz 🎵
 
 **Listen Together, Anywhere**
 
