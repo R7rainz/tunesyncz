@@ -253,38 +253,46 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     [roomData, roomId],
   );
 
-  const addToQueue = useCallback(
-    (video: YouTubeVideo) => {
-      if (!roomData) return;
+const addToQueue = useCallback(
+  (video: YouTubeVideo) => {
+    if (!roomData) return;
+    
+    const queueItem: QueueItem = {
+      ...video,
+      addedBy: userId,
+      addedAt: Date.now(),
+      votes: 0,
+      voters: [],
+      upvoters: [],
+      downvoters: [],
+    };
 
-      const queueItem: QueueItem = {
-        ...video,
-        addedBy: userId,
-        addedAt: Date.now(),
-        votes: 0,
-        voters: [],
-        upvoters: [],
-        downvoters: [],
+    // Check if we should start playing immediately BEFORE modifying the queue
+    const shouldStartPlaying = !roomData.currentSong && roomData.queue.length === 0;
+
+    if (shouldStartPlaying) {
+      // Make this the current song and start playing
+      const updateData: Partial<RoomData> = {
+        currentSong: queueItem,
+        isPlaying: true,
+        syncedTime: 0,
+        lastSyncUpdate: Date.now(),
+        // Don't add to queue since it's now the current song
       };
-
+      updateRoomData(updateData);
+      console.log('Added as current song (no current song existed)');
+    } else {
+      // Add to queue and sort by votes
       const newQueue = [...roomData.queue, queueItem].sort(
         (a, b) => b.votes - a.votes,
       );
-
-      // If no current song and queue was empty, start playing
       const updateData: Partial<RoomData> = { queue: newQueue };
-      if (!roomData.currentSong && roomData.queue.length === 0) {
-        updateData.currentSong = queueItem;
-        updateData.isPlaying = true;
-        updateData.syncedTime = 0;
-        updateData.lastSyncUpdate = Date.now();
-      }
-
       updateRoomData(updateData);
-    },
-    [roomData, updateRoomData],
-  );
-
+      console.log('Added to queue');
+    }
+  },
+  [roomData, updateRoomData, userId],
+);
   const handleVote = useCallback(
     (songId: string, voteType: "up" | "down") => {
       if (!roomData) return;
@@ -394,47 +402,57 @@ export function RoomManager({ roomId, onLeaveRoom }: RoomManagerProps) {
     [roomData, updateRoomData, userId, canUserControl, getSyncLeader],
   );
 
+let nextSongTimeout: NodeJS.Timeout | null = null;
+
 const handleNext = async () => {
-  try {
-    // Get current room data
-    const roomData = await RoomStorage.getRoomData(roomId);
-    if (!roomData) return;
-
-    console.log('Current queue before next:', roomData.queue);
-    console.log('Current song before next:', roomData.currentSong);
-
-    if (roomData.queue.length > 0) {
-      // Get the next song from queue
-      const nextSong = roomData.queue[0];
-      // Remove it from queue
-      const updatedQueue = roomData.queue.slice(1);
-      
-      console.log('Next song:', nextSong);
-      console.log('Updated queue after next:', updatedQueue);
-      
-      // Update room with new current song and updated queue
-      await RoomStorage.updateRoom(roomId, {
-        currentSong: nextSong,
-        queue: updatedQueue,
-        isPlaying: true,
-        syncedTime: 0,
-        lastSyncUpdate: Date.now(),
-      });
-    } else {
-      console.log('No more songs in queue, stopping playback');
-      // No more songs, stop playing
-      await RoomStorage.updateRoom(roomId, {
-        currentSong: null,
-        isPlaying: false,
-        syncedTime: 0,
-        lastSyncUpdate: Date.now(),
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleNext:', error);
+  // Clear any existing timeout to prevent multiple calls
+  if (nextSongTimeout) {
+    clearTimeout(nextSongTimeout);
   }
-};
 
+  nextSongTimeout = setTimeout(async () => {
+    try {
+      // Get current room data
+      const roomData = await RoomStorage.getRoomData(roomId);
+      if (!roomData) return;
+
+      console.log('Current queue before next:', roomData.queue);
+      console.log('Current song before next:', roomData.currentSong);
+
+      if (roomData.queue.length > 0) {
+        // Get the next song from queue
+        const nextSong = roomData.queue[0];
+        // Remove it from queue
+        const updatedQueue = roomData.queue.slice(1);
+        
+        console.log('Next song:', nextSong);
+        console.log('Updated queue after next:', updatedQueue);
+        
+        // Update room with new current song and updated queue
+        await RoomStorage.updateRoom(roomId, {
+          currentSong: nextSong,
+          queue: updatedQueue,
+          isPlaying: true,
+          syncedTime: 0,
+          lastSyncUpdate: Date.now(),
+        });
+      } else {
+        console.log('No more songs in queue, stopping playback');
+        // No more songs, stop playing
+        await RoomStorage.updateRoom(roomId, {
+          currentSong: null,
+          isPlaying: false,
+          syncedTime: 0,
+          lastSyncUpdate: Date.now(),
+        });
+      }
+    } catch (error) {
+      console.error('Error in handleNext:', error);
+    } finally {
+      nextSongTimeout = null;
+    }
+  }, 100); // 100ms debounce
+};
   const leaveRoom = useCallback(async () => {
     if (roomData) {
       const updatedMembers = roomData.members.filter(
