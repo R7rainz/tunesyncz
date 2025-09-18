@@ -4,76 +4,76 @@
 
 @layer base {
     :root {
-        /* Converted OKLCH to HSL for Tailwind v3 compatibility */
-        --background: 240 3.7% 11.8%;
-        --foreground: 0 0% 98.5%;
-        --card: 240 3.7% 15.7%;
-        --card-foreground: 0 0% 98.5%;
-        --popover: 240 3.7% 15.7%;
-        --popover-foreground: 0 0% 98.5%;
-        --primary: 195 86.7% 65.1%;
-        --primary-foreground: 0 0% 98.5%;
-        --secondary: 240 3.7% 25.5%;
-        --secondary-foreground: 0 0% 98.5%;
-        --muted: 240 3.7% 25.5%;
-        --muted-foreground: 0 0% 70.8%;
-        --accent: 45 87.8% 68.2%;
-        --accent-foreground: 0 0% 98.5%;
-        --destructive: 27.3 91.5% 57.7%;
-        --destructive-foreground: 0 0% 98.5%;
-        --border: 240 3.7% 25.5%;
-        --input: 240 3.7% 15.7%;
-        --ring: 195 86.7% 65.1%;
-        --chart-1: 45 87.8% 68.2%;
-        --chart-2: 85 87.5% 75.3%;
-        --chart-3: 120 86.7% 65.1%;
-        --chart-4: 200 87.8% 70.2%;
-        --chart-5: 280 87.5% 60.2%;
+        /* Blue & Cyan Music theme */
+        --background: 220 25% 10%;
+        --foreground: 210 30% 98%;
+        --card: 220 25% 13%;
+        --card-foreground: 210 30% 98%;
+        --popover: 220 25% 13%;
+        --popover-foreground: 210 30% 98%;
+        --primary: 210 100% 60%;
+        --primary-foreground: 210 30% 98%;
+        --secondary: 220 25% 18%;
+        --secondary-foreground: 210 30% 98%;
+        --muted: 220 25% 18%;
+        --muted-foreground: 210 30% 70%;
+        --accent: 180 100% 50%;
+        --accent-foreground: 220 25% 10%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 210 30% 98%;
+        --border: 220 25% 22%;
+        --input: 220 25% 15%;
+        --ring: 180 100% 50%;
+        --chart-1: 210 100% 60%;
+        --chart-2: 200 100% 60%;
+        --chart-3: 190 100% 60%;
+        --chart-4: 180 100% 50%;
+        --chart-5: 170 100% 45%;
         --radius: 0.5rem;
-        --sidebar: 240 3.7% 15.7%;
-        --sidebar-foreground: 0 0% 98.5%;
-        --sidebar-primary: 195 86.7% 65.1%;
-        --sidebar-primary-foreground: 0 0% 98.5%;
-        --sidebar-accent: 45 87.8% 68.2%;
-        --sidebar-accent-foreground: 0 0% 98.5%;
-        --sidebar-border: 240 3.7% 25.5%;
-        --sidebar-ring: 195 86.7% 65.1%;
+        --sidebar: 220 25% 13%;
+        --sidebar-foreground: 210 30% 98%;
+        --sidebar-primary: 210 100% 60%;
+        --sidebar-primary-foreground: 210 30% 98%;
+        --sidebar-accent: 180 100% 50%;
+        --sidebar-accent-foreground: 220 25% 10%;
+        --sidebar-border: 220 25% 22%;
+        --sidebar-ring: 180 100% 50%;
     }
 
     .dark {
-        /* Dark theme uses same values as light in your case */
-        --background: 240 3.7% 11.8%;
-        --foreground: 0 0% 98.5%;
-        --card: 240 3.7% 15.7%;
-        --card-foreground: 0 0% 98.5%;
-        --popover: 240 3.7% 15.7%;
-        --popover-foreground: 0 0% 98.5%;
-        --primary: 195 86.7% 65.1%;
-        --primary-foreground: 0 0% 98.5%;
-        --secondary: 240 3.7% 25.5%;
-        --secondary-foreground: 0 0% 98.5%;
-        --muted: 240 3.7% 25.5%;
-        --muted-foreground: 0 0% 70.8%;
-        --accent: 45 87.8% 68.2%;
-        --accent-foreground: 0 0% 98.5%;
-        --destructive: 27.3 91.5% 57.7%;
-        --destructive-foreground: 0 0% 98.5%;
-        --border: 240 3.7% 25.5%;
-        --input: 240 3.7% 15.7%;
-        --ring: 195 86.7% 65.1%;
-        --chart-1: 45 87.8% 68.2%;
-        --chart-2: 85 87.5% 75.3%;
-        --chart-3: 120 86.7% 65.1%;
-        --chart-4: 200 87.8% 70.2%;
-        --chart-5: 280 87.5% 60.2%;
-        --sidebar: 240 3.7% 15.7%;
-        --sidebar-foreground: 0 0% 98.5%;
-        --sidebar-primary: 195 86.7% 65.1%;
-        --sidebar-primary-foreground: 0 0% 98.5%;
-        --sidebar-accent: 45 87.8% 68.2%;
-        --sidebar-accent-foreground: 0 0% 98.5%;
-        --sidebar-border: 240 3.7% 25.5%;
-        --sidebar-ring: 195 86.7% 65.1%;
+        /* Dark theme uses same values */
+        --background: 220 25% 10%;
+        --foreground: 210 30% 98%;
+        --card: 220 25% 13%;
+        --card-foreground: 210 30% 98%;
+        --popover: 220 25% 13%;
+        --popover-foreground: 210 30% 98%;
+        --primary: 210 100% 60%;
+        --primary-foreground: 210 30% 98%;
+        --secondary: 220 25% 18%;
+        --secondary-foreground: 210 30% 98%;
+        --muted: 220 25% 18%;
+        --muted-foreground: 210 30% 70%;
+        --accent: 180 100% 50%;
+        --accent-foreground: 220 25% 10%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 210 30% 98%;
+        --border: 220 25% 22%;
+        --input: 220 25% 15%;
+        --ring: 180 100% 50%;
+        --chart-1: 210 100% 60%;
+        --chart-2: 200 100% 60%;
+        --chart-3: 190 100% 60%;
+        --chart-4: 180 100% 50%;
+        --chart-5: 170 100% 45%;
+        --sidebar: 220 25% 13%;
+        --sidebar-foreground: 210 30% 98%;
+        --sidebar-primary: 210 100% 60%;
+        --sidebar-primary-foreground: 210 30% 98%;
+        --sidebar-accent: 180 100% 50%;
+        --sidebar-accent-foreground: 220 25% 10%;
+        --sidebar-border: 220 25% 22%;
+        --sidebar-ring: 180 100% 50%;
     }
 
     * {
@@ -90,20 +90,22 @@
 }
 
 @layer components {
-    /* Removed bright background gradients that were causing white washing effect */
+    /* Music-specific styling with blue and cyan colors */
     .music-bg {
-        background: transparent;
+        background: linear-gradient(
+            135deg,
+            hsl(220, 25%, 10%) 0%,
+            hsl(220, 25%, 13%) 100%
+        );
     }
 
-    /* Removed musicPulse animation that was creating bright overlay */
-
-    /* Toned down wave animation to be much more subtle */
+    /* Enhanced wave animation with blue and cyan colors */
     .wave-animation {
         background: linear-gradient(
             90deg,
-            hsla(195, 86.7%, 65.1%, 0.02) 0%,
-            hsla(45, 87.8%, 68.2%, 0.02) 50%,
-            hsla(195, 86.7%, 65.1%, 0.02) 100%
+            hsla(210, 100%, 60%, 0.1) 0%,
+            hsla(180, 100%, 50%, 0.2) 50%,
+            hsla(210, 100%, 60%, 0.1) 100%
         );
         background-size: 200% 100%;
         animation: wave 3s ease-in-out infinite;
@@ -119,10 +121,17 @@
         }
     }
 
-    /* Added gradient animation for title */
+    /* Enhanced gradient animation for title */
     .animate-gradient {
+        background: linear-gradient(
+            90deg,
+            hsl(210, 100%, 60%),
+            hsl(200, 100%, 60%),
+            hsl(180, 100%, 50%),
+            hsl(210, 100%, 60%)
+        );
         background-size: 300% 300%;
-        animation: gradient 6s ease infinite;
+        animation: gradient 8s ease infinite;
     }
 
     @keyframes gradient {
@@ -154,13 +163,223 @@
         border-radius: 0.375rem;
         box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     }
+    
+    /* Music player specific components */
+    .music-player {
+        background: hsl(var(--card));
+        border: 1px solid hsl(var(--border));
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .progress-bar {
+        background: hsl(var(--muted));
+    }
+    
+    .progress-filled {
+        background: linear-gradient(
+            90deg,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+    }
+    
+    /* Volume slider customization */
+    .volume-slider::-webkit-slider-thumb {
+        background: linear-gradient(
+            135deg,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+    }
+    
+    .volume-slider::-moz-range-thumb {
+        background: linear-gradient(
+            135deg,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+    }
+    
+    /* Equalizer bars animation */
+    .equalizer-bar {
+        background: linear-gradient(
+            to top,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+        animation: equalize 1.5s infinite ease-in-out;
+    }
+    
+    .equalizer-bar:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+    
+    .equalizer-bar:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+    
+    .equalizer-bar:nth-child(4) {
+        animation-delay: 0.6s;
+    }
+    
+    .equalizer-bar:nth-child(5) {
+        animation-delay: 0.8s;
+    }
+    
+    @keyframes equalize {
+        0%, 100% {
+            height: 40%;
+        }
+        50% {
+            height: 80%;
+        }
+    }
+    
+    /* Vinyl record animation */
+    .vinyl-record {
+        background: radial-gradient(
+            circle,
+            hsl(220, 25%, 13%) 0%,
+            hsl(220, 25%, 10%) 70%
+        );
+        border: 2px solid hsl(var(--border));
+        box-shadow: 0 0 15px hsla(180, 100%, 50%, 0.2);
+        animation: spin 10s linear infinite;
+    }
+    
+    .vinyl-record::before {
+        content: '';
+        position: absolute;
+        width: 20%;
+        height: 20%;
+        background: linear-gradient(
+            135deg,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+        border-radius: 50%;
+        z-index: 2;
+    }
+    
+    .vinyl-record::after {
+        content: '';
+        position: absolute;
+        width: 5%;
+        height: 5%;
+        background: hsl(210, 30%, 98%);
+        border-radius: 50%;
+        z-index: 3;
+    }
+    
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+    
+    /* Pause the animation when music is paused */
+    .paused .vinyl-record {
+        animation-play-state: paused;
+    }
+    
+    /* Music note decoration */
+    .music-note {
+        background: linear-gradient(
+            135deg,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+        0%, 100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-10px);
+        }
+    }
+    
+    /* Sound wave visualization */
+    .sound-wave {
+        display: flex;
+        align-items: flex-end;
+        height: 40px;
+        gap: 3px;
+    }
+    
+    .sound-wave-bar {
+        width: 4px;
+        background: linear-gradient(
+            to top,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+        border-radius: 2px;
+        animation: soundWave 1.5s ease-in-out infinite;
+    }
+    
+    .sound-wave-bar:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+    
+    .sound-wave-bar:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+    
+    .sound-wave-bar:nth-child(4) {
+        animation-delay: 0.6s;
+    }
+    
+    .sound-wave-bar:nth-child(5) {
+        animation-delay: 0.8s;
+    }
+    
+    @keyframes soundWave {
+        0%, 100% {
+            height: 20%;
+        }
+        50% {
+            height: 80%;
+        }
+    }
+    
+    /* Play button styling */
+    .play-button {
+        background: linear-gradient(
+            135deg,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
+        box-shadow: 0 0 20px hsla(180, 100%, 50%, 0.4);
+        transition: all 0.3s ease;
+    }
+    
+    .play-button:hover {
+        box-shadow: 0 0 25px hsla(180, 100%, 50%, 0.6);
+        transform: scale(1.05);
+    }
+    
+    /* Neon glow effect for important elements */
+    .neon-glow {
+        box-shadow: 0 0 5px hsl(var(--accent) / 0.7),
+                    0 0 10px hsl(var(--accent) / 0.5),
+                    0 0 15px hsl(var(--accent) / 0.3);
+    }
 }
 
 @layer utilities {
     /* Enhanced focus styles for better accessibility */
     *:focus-visible {
-        outline: 1px solid hsl(var(--border));
-        outline-offset: 1px;
+        outline: 2px solid hsl(var(--ring));
+        outline-offset: 2px;
     }
 
     /* Smooth scrolling */
@@ -178,12 +397,20 @@
     }
 
     ::-webkit-scrollbar-thumb {
-        background-color: hsl(var(--muted-foreground) / 0.3);
+        background: linear-gradient(
+            to bottom,
+            hsl(var(--primary)),
+            hsl(var(--accent))
+        );
         border-radius: 9999px;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background-color: hsl(var(--muted-foreground) / 0.5);
+        background: linear-gradient(
+            to bottom,
+            hsl(var(--accent)),
+            hsl(var(--primary))
+        );
     }
 
     /* Text balance utility */
@@ -196,7 +423,7 @@
 .glass-effect {
     backdrop-filter: blur(10px);
     background: hsl(var(--background) / 0.8);
-    border: 1px solid hsl(var(--border) / 0.2);
+    border: 1px solid hsl(var(--border) / 0.3);
 }
 
 /* Gradient text utility */
@@ -232,8 +459,8 @@
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     :root {
-        --border: 240 3.7% 15.7%;
-        --muted-foreground: 0 0% 85%;
+        --border: 220 25% 25%;
+        --muted-foreground: 210 30% 90%;
     }
 }
 

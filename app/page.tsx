@@ -14,7 +14,7 @@ export default function HomePage() {
       router.push(`/room/${savedRoom}`);
       return;
     }
-    
+
     // Redirect to dashboard
     router.push("/dashboard");
   }, [router]);
@@ -29,7 +29,7 @@ export default function HomePage() {
           </div>
         </div>
         <p className="text-lg animate-pulse text-foreground">
-          Redirecting to SyncTunes...
+          Redirecting to TuneSyncz...
         </p>
       </div>
     </div>

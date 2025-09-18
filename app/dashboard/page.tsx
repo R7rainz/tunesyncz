@@ -40,7 +40,7 @@ export default function HomePage() {
             </div>
           </div>
           <p className="text-lg animate-pulse text-foreground">
-            Loading SyncTunes...
+            Loading TuneSyncz...
           </p>
         </div>
       </div>
@@ -69,7 +69,7 @@ export default function HomePage() {
               <div className="absolute inset-0 bg-primary/10 rounded-full animate-ping"></div>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent animate-gradient bg-300% text-balance">
-              SyncTunes
+              TuneSyncz
             </h1>
           </div>
           <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto text-balance leading-relaxed">
@@ -168,13 +168,13 @@ function CreateRoomCard() {
     setIsCreating(true);
 
     try {
-      const { roomData, shareUrl } =
-        await RoomStorage.createShareableRoom(roomName);
+      const { roomData, shareUrl } = await RoomStorage.createShareableRoom(
+        roomName
+      );
       localStorage.setItem("currentRoom", roomData.id);
 
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(shareUrl).catch(() => {
-        });
+        navigator.clipboard.writeText(shareUrl).catch(() => {});
       }
 
       router.push(
@@ -184,8 +184,8 @@ function CreateRoomCard() {
             name: roomData.name,
             creator: roomData.creator, // Pass the actual creator ID
             createdAt: roomData.createdAt,
-          }),
-        )}`,
+          })
+        )}`
       );
     } catch (error) {
       console.error("Error creating room:", error);
@@ -274,14 +274,19 @@ function JoinRoomCard() {
       // Try to join the room using the proper method
       let roomData = await RoomStorage.getRoomData(upperRoomId);
       if (!roomData) {
-        roomData = await RoomStorage.joinRoomFromUrl(upperRoomId, new URLSearchParams());
+        roomData = await RoomStorage.joinRoomFromUrl(
+          upperRoomId,
+          new URLSearchParams()
+        );
       }
-      
+
       if (roomData) {
         localStorage.setItem("currentRoom", upperRoomId);
         router.push(`/room/${upperRoomId}`);
       } else {
-        setError("Room not found. Please check the room ID or ask the creator for the correct link.");
+        setError(
+          "Room not found. Please check the room ID or ask the creator for the correct link."
+        );
       }
     } catch (error) {
       console.error("Error joining room:", error);
